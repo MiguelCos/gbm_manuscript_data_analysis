@@ -2,7 +2,7 @@ GBM Proteomics and Proteolytic processing data analysis - Reproducible
 report
 ================
 Miguel Cosenza
-21 January, 2022
+25 January, 2022
 
 ``` r
 knitr::opts_chunk$set(echo = TRUE, 
@@ -2733,7 +2733,11 @@ pept_quant_to_summary <- pept_quant_annotated %>%
 
 pep_quant_presummary <- pept_quant_to_summary %>%
   dplyr::select(Protein, Peptide, recurrence, paired_id, 
-                Abundance, specificity, is_terminal) 
+                Abundance, specificity, is_terminal)
+
+pep_quant_presummary_semi <- pep_quant_presummary %>%
+  filter(specificity == "semi_specific",
+         is_terminal == "not_terminal")
 ```
 
 **Prepare data-frame with abudance percentage of semi-specific peptides
@@ -2755,6 +2759,16 @@ pept_sum_summary <- left_join(pept_summary_int_all, pept_summary_int_semi) %>%
          Stage = if_else(recurrence == "prim",
                          true = "Initial",
                          false = "Recurrence"))
+
+# summary of sum of log2 semi-specific peptides per sample
+
+pept_summary_semi_1 <- pep_quant_presummary_semi %>% 
+  group_by(paired_id, recurrence) %>%
+  summarise(Sum_All = sum(Abundance, na.rm = TRUE)) %>%
+  mutate(Stage = if_else(recurrence == "prim",
+                         true = "Initial",
+                         false = "Recurrence"),
+         `Summed Abundances` = Sum_All)
 ```
 
 ### Generate plot % of abundance of semi-specific peptides
@@ -2789,12 +2803,6 @@ plotSumEM <- ggplot(pept_sum_summary,
 ```
 
 ``` r
-plotSumEM
-```
-
-![](gbm_proteomics_data_analysis_proteolytic_products_prep_figures_v3_gh_format_files/figure-gfm/unnamed-chunk-111-1.png)<!-- -->
-
-``` r
 ggsave(plot = plotSumEM, 
        filename = here::here("figures/box_perc_semispec_pepts.tiff"), 
        device = "tiff",
@@ -2804,6 +2812,55 @@ ggsave(plot = plotSumEM,
 
 ggsave(plot = plotSumEM, 
        filename = here::here("figures/box_perc_semispec_pepts.eps"), 
+       device = "eps",
+       units = "mm",
+       width = 40,
+       height = 50)
+```
+
+### Generate plot of sum of abundances semi-specific peptides
+
+``` r
+sum_semi_abunds <- ggplot(pept_summary_semi_1, 
+                    aes(x = Stage, 
+                        y = `Summed Abundances`, fill = Stage, 
+                        cex.axis = 1.5)) +
+  geom_boxplot() +
+  #geom_dotplot(binaxis = "y", stackdir = "center", dotsize = 0.5,
+  #             ) +
+  geom_jitter(position=position_jitter(0.2)) + 
+  # Box plot with jittered points
+  # 0.2 : degree of jitter in x direction
+  # geom_jitter(shape=16, position=position_jitter(0.2))
+  ylab("Sum of log2-intensities of semi-tryptic peptides") +
+  geom_signif(
+    comparisons = list(c("Initial", "Recurrence")),
+    map_signif_level = TRUE
+  ) + 
+  stat_compare_means(method="t.test") +
+  theme(axis.text.x = element_text(hjust = 0.5, vjust = 0, size = 6, angle = 360),
+        axis.text.y = element_text(hjust = 0.95, vjust = 0.2, size = 8),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.border = element_rect(colour = "black", fill=NA, size=0.5),
+        axis.title = element_text(size = 8),
+        legend.text = element_text(size = 6),
+        legend.title = element_text(size = 8),
+        legend.key.height= unit(3, 'mm'),
+        legend.key.width= unit(3, 'mm'),
+        legend.position="bottom")
+```
+
+``` r
+ggsave(plot = sum_semi_abunds, 
+       filename = here::here("figures/box_sum_semispec_pepts.tiff"), 
+       device = "tiff",
+       units = "mm",
+       width = 40,
+       height = 50)
+
+ggsave(plot = sum_semi_abunds, 
+       filename = here::here("figures/box_sum_semispec_pepts.eps"), 
        device = "eps",
        units = "mm",
        width = 40,
@@ -3058,7 +3115,7 @@ write_tsv(x = increased_Rec,
           file = here("results/semi_tryptic/proteolytic_products_increased_in_Recurrent.tsv"))
 
 write_tsv(x = decreased_Rec,
-          file = here("results/semi_tryptic/proteolytic_products_increased_in_Recurrent.tsv"))
+          file = here("results/semi_tryptic/proteolytic_products_decreased_in_Recurrent.tsv"))
 
 
 increased_Rec_4ice <- filter(cleave_areas$cleave_area20,
@@ -3118,7 +3175,7 @@ dau_nogroup_increased <- testDAU(form_peptidesincreased_4ice,
 dagHeatmap(dau_nogroup_increased) 
 ```
 
-![](gbm_proteomics_data_analysis_proteolytic_products_prep_figures_v3_gh_format_files/figure-gfm/unnamed-chunk-135-1.png)<!-- -->
+![](gbm_proteomics_data_analysis_proteolytic_products_prep_figures_v3_gh_format_files/figure-gfm/unnamed-chunk-136-1.png)<!-- -->
 
 #### DAU decreased
 
@@ -3138,7 +3195,7 @@ dau_nogroup_decreased <- testDAU(form_peptidesdecreased_4ice,
 dagHeatmap(dau_nogroup_decreased) 
 ```
 
-![](gbm_proteomics_data_analysis_proteolytic_products_prep_figures_v3_gh_format_files/figure-gfm/unnamed-chunk-138-1.png)<!-- -->
+![](gbm_proteomics_data_analysis_proteolytic_products_prep_figures_v3_gh_format_files/figure-gfm/unnamed-chunk-139-1.png)<!-- -->
 
 # Proteogenomics
 
@@ -3512,7 +3569,7 @@ Heatmap(pep_matvariantswo6or_hm,
     ))
 ```
 
-![](gbm_proteomics_data_analysis_proteolytic_products_prep_figures_v3_gh_format_files/figure-gfm/unnamed-chunk-151-1.png)<!-- -->
+![](gbm_proteomics_data_analysis_proteolytic_products_prep_figures_v3_gh_format_files/figure-gfm/unnamed-chunk-152-1.png)<!-- -->
 
 ### Heatmap of SAAVs observed on every sample
 
@@ -3533,7 +3590,7 @@ Heatmap(pep_matvariantswo6nona_hm,
     ))
 ```
 
-![](gbm_proteomics_data_analysis_proteolytic_products_prep_figures_v3_gh_format_files/figure-gfm/unnamed-chunk-152-1.png)<!-- -->
+![](gbm_proteomics_data_analysis_proteolytic_products_prep_figures_v3_gh_format_files/figure-gfm/unnamed-chunk-153-1.png)<!-- -->
 
 ### Limma on SAAVs
 
@@ -3741,7 +3798,7 @@ ggpaired(slim_data3saav,
   ggtitle(increased_recwo6_saavs)
 ```
 
-![](gbm_proteomics_data_analysis_proteolytic_products_prep_figures_v3_gh_format_files/figure-gfm/unnamed-chunk-166-1.png)<!-- -->
+![](gbm_proteomics_data_analysis_proteolytic_products_prep_figures_v3_gh_format_files/figure-gfm/unnamed-chunk-167-1.png)<!-- -->
 
 ``` r
 paired_box_saavs <- ggpaired(slim_data3saav,
