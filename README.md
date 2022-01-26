@@ -18,7 +18,7 @@ Evaluates if the peptide N-term contains a TMT-tag, acetylation or if it is free
 
 #### [Feature-specific FDR correction](https://github.com/MiguelCos/gbm_manuscript_data_analysis/blob/main/scr/feature_specific_fdr_correction.R):
 
-After fitting the peptide-level linear model with limma, this function applies FDR correction on specific features of interest. In our case, we focus on semi-specific peptides. We based this approach on the notions of Bourgon et al. 2010 [10.1073/pnas.0914005107](10.1073/pnas.0914005107).
+After fitting the peptide-level linear model with limma, this function applies FDR correction on specific features of interest. In our case, we focus on semi-specific peptides. We based this approach on the notions of Bourgon et al. 2010 [10.1073/pnas.0914005107](https://doi.org/10.1073/pnas.0914005107).
 
 #### [Get cleavage area](https://github.com/MiguelCos/gbm_manuscript_data_analysis/blob/main/scr/get_cleavage_area.R):
 
