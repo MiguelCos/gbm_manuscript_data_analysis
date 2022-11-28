@@ -1,0 +1,30 @@
+\setlength{\LTpost}{0mm}
+\begin{longtable}{llrrrr}
+\caption*{
+{\large \textbf{Statistical Comparisons Between Population Groups per Genes}}
+} \\ 
+\toprule
+\textbf{Comparison} & \textbf{Statistical Test}\textsuperscript{1} & \textbf{ASAH1}\textsuperscript{2} & \textbf{GPNMB}\textsuperscript{2} & \textbf{MMP-9}\textsuperscript{2} & \textbf{SYNEMIN}\textsuperscript{2} \\ 
+\midrule
+\multicolumn{6}{l}{\textbf{Control vs Pre-Surgery vs Post-Surgery Plasma Samples}} \\ 
+\midrule
+Ctrl vs post-
+surgery & Permutation Test & 0.7522500 & 0.1694500 & 0.1216000 & 0.2528000 \\ 
+Ctrl vs pre-
+surgery & Permutation Test & 0.0223500 & 0.9930500 & 0.0421500 & 0.0599500 \\ 
+pre-
+surgery vs post-
+surgery & Paired Permutation Test & 0.0089720 & 0.2421880 & 0.4755860 & 0.5427860 \\ 
+\midrule
+\multicolumn{6}{l}{\textbf{Control vs Initial GBM vs Recurrent GBM Plasma Samples}} \\ 
+\midrule
+Ctrl vs iGBM & Permutation Test & 0.1804000 & 0.4020500 & 0.0805000 & 0.0021000 \\ 
+Ctrl vs rGBM & Permutation Test & 0.2538500 & 0.2506500 & 0.4599500 & 0.1405500 \\ 
+iGBM vs rGBM & Paired Permutation Test & 0.1992188 & 0.6123047 & 0.1171875 & 0.1054688 \\ 
+\bottomrule
+\end{longtable}
+\begin{minipage}{\linewidth}
+\textsuperscript{1}Permutation test using t-test statisics for non-paired samples, or paired permutation test using pair t-test statistics for paired samples.\\
+\textsuperscript{2}Values in cells represent the non-adjusted p-value from the corresponding statistical test.\\
+\end{minipage}
+

@@ -24,4 +24,6 @@ After fitting the peptide-level linear model with limma, this function applies F
 
 After identifying a set of interesting semi-specific peptides/proteolytic products, this function was used to generate peptide sequences that catch the residues in the vicinity (i.e. 10 amino acids after and before) of the non-tryptic cleavage area. This, as a preparation for the analysis of sequence motifs. 
 
+### [Analysis of Plasma ELISA Proteomics](https://github.com/MiguelCos/gbm_manuscript_data_analysis/blob/main/results/elisa_plasma_proteomics/manuscript_elisa_figure_final.pdf)
 
+To regenerate analysis for Plasma ELISA Proteomics, knit the [manuscript_elisa_figure_final.Rmd](https://github.com/MiguelCos/gbm_manuscript_data_analysis/blob/main/results/elisa_plasma_proteomics/manuscript_elisa_figure_final.Rmd) r notebook.
