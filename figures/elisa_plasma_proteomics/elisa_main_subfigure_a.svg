@@ -304,7 +304,7 @@
 <circle cx='927.08' cy='497.66' r='1.63' style='stroke-width: 0.71; fill: #000000;' />
 <circle cx='927.08' cy='506.62' r='1.63' style='stroke-width: 0.71; fill: #000000;' />
 <circle cx='927.08' cy='516.52' r='1.63' style='stroke-width: 0.71; fill: #000000;' />
-<text x='1038.51' y='413.64' text-anchor='middle' style='font-size: 11.38px; font-family: "Arimo";' textLength='86.00px' lengthAdjust='spacingAndGlyphs'>** p = 0.00225</text>
+<text x='1038.51' y='413.64' text-anchor='middle' style='font-size: 11.38px; font-family: "Arimo";' textLength='78.77px' lengthAdjust='spacingAndGlyphs'>** p = 0.0024</text>
 <line x1='927.08' y1='424.06' x2='927.08' y2='416.44' style='stroke-width: 2.13;' />
 <line x1='927.08' y1='416.44' x2='1149.94' y2='416.44' style='stroke-width: 2.13;' />
 <line x1='1149.94' y1='416.44' x2='1149.94' y2='424.06' style='stroke-width: 2.13;' />
