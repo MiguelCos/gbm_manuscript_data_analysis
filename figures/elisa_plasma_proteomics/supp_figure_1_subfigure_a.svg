@@ -99,7 +99,7 @@
 <circle cx='129.01' cy='169.27' r='1.63' style='stroke-width: 0.71; fill: #000000;' />
 <circle cx='129.01' cy='171.20' r='1.63' style='stroke-width: 0.71; fill: #000000;' />
 <circle cx='129.01' cy='175.94' r='1.63' style='stroke-width: 0.71; fill: #000000;' />
-<text x='182.60' y='85.59' text-anchor='middle' style='font-size: 11.38px; font-family: "Arimo";' textLength='73.08px' lengthAdjust='spacingAndGlyphs'>* p = 0.0208</text>
+<text x='182.60' y='85.59' text-anchor='middle' style='font-size: 11.38px; font-family: "Arimo";' textLength='73.08px' lengthAdjust='spacingAndGlyphs'>* p = 0.0203</text>
 <line x1='129.01' y1='93.39' x2='129.01' y2='87.69' style='stroke-width: 2.13;' />
 <line x1='129.01' y1='87.69' x2='236.19' y2='87.69' style='stroke-width: 2.13;' />
 <line x1='236.19' y1='87.69' x2='236.19' y2='93.39' style='stroke-width: 2.13;' />
@@ -183,7 +183,7 @@
 <circle cx='129.01' cy='414.60' r='1.63' style='stroke-width: 0.71; fill: #000000;' />
 <circle cx='129.01' cy='427.34' r='1.63' style='stroke-width: 0.71; fill: #000000;' />
 <circle cx='129.01' cy='458.19' r='1.63' style='stroke-width: 0.71; fill: #000000;' />
-<text x='182.60' y='308.68' text-anchor='middle' style='font-size: 11.38px; font-family: "Arimo";' textLength='73.08px' lengthAdjust='spacingAndGlyphs'>* p = 0.0411</text>
+<text x='182.60' y='308.68' text-anchor='middle' style='font-size: 11.38px; font-family: "Arimo";' textLength='65.84px' lengthAdjust='spacingAndGlyphs'>* p = 0.042</text>
 <line x1='129.01' y1='316.48' x2='129.01' y2='310.77' style='stroke-width: 2.13;' />
 <line x1='129.01' y1='310.77' x2='236.19' y2='310.77' style='stroke-width: 2.13;' />
 <line x1='236.19' y1='310.77' x2='236.19' y2='316.48' style='stroke-width: 2.13;' />
