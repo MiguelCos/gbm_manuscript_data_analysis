@@ -2321,7 +2321,8 @@ surv_p1 <- ggsurvplot(fit,
           surv.median.line = "hv", # Specify median survival
           ggtheme = theme_bw(), # Change ggplot2 theme
           palette = "Dark2"
-          )
+          ) +
+  labs(x="Latency Time (Days)")
 
 fit <- survfit(Surv(Latency..days., status) ~ SYNM, data = latency_data)
 print(fit)
@@ -2335,7 +2336,8 @@ surv_p2 <- ggsurvplot(fit,
           surv.median.line = "hv", # Specify median survival
           ggtheme = theme_bw(), # Change ggplot2 theme
           palette = "Dark2"
-          )
+          ) +
+  labs(x="Latency Time (Days)")
 
 fit <- survfit(Surv(Latency..days., status) ~ GPNMB, data = latency_data)
 print(fit)
@@ -2349,7 +2351,8 @@ surv_p3 <- ggsurvplot(fit,
           surv.median.line = "hv", # Specify median survival
           ggtheme = theme_bw(), # Change ggplot2 theme
           palette = "Dark2"
-          )
+          ) +
+  labs(x="Latency Time (Days)")
 
 fit <- survfit(Surv(Latency..days., status) ~ MMP9, data = latency_data)
 print(fit)
@@ -2363,7 +2366,33 @@ surv_p4 <- ggsurvplot(fit,
           surv.median.line = "hv", # Specify median survival
           ggtheme = theme_bw(), # Change ggplot2 theme
           palette = "Dark2"
-          )
+          ) +
+  labs(x="Latency Time (Days)")
+
+fit <- survfit(Surv(Latency..days., status) ~ ASAH1 + SYNM, data = latency_data)
+print(fit)
+# Change color, linetype by strata, risk.table color by strata
+surv_p5 <- ggsurvplot(fit,
+          pval = TRUE, conf.int = F,
+          risk.table = TRUE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          linetype = "strata", # Change line type by groups
+          surv.median.line = "hv", # Specify median survival
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          ) +
+  labs(x="Latency Time (Days)")  +
+  guides(col=guide_legend(nrow=2,byrow=TRUE))
+
+surv_p5_with_ci <- ggsurvplot(fit,
+          pval = TRUE, conf.int = T,
+          risk.table = TRUE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          linetype = "strata", # Change line type by groups
+          surv.median.line = "hv", # Specify median survival
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          ) +
+  labs(x="Latency Time (Days)")  +
+  guides(col=guide_legend(nrow=2,byrow=TRUE))
 
 survival_plot_grid <- ggarrange(surv_p1$plot, surv_p2$plot, surv_p3$plot, surv_p4$plot, ncol = 4)
 ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_c.png", plot = survival_plot_grid, width = 18, height = 7, dpi = 200)
@@ -2380,6 +2409,99 @@ ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_c3.svg", plot
 
 ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_c4.png", plot = surv_p4$plot, width = 11, height = 7, dpi = 200)
 ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_c4.svg", plot = surv_p4$plot, width = 11, height = 7, dpi = 200)
+
+# ggsave("../../figures/elisa_plasma_proteomics/elisa_supp_subfigure_.png", plot = surv_p5$plot, width = 11, height = 7, dpi = 200)
+# ggsave("../../figures/elisa_plasma_proteomics/elisa_supp_subfigure_.svg", plot = surv_p5$plot, width = 11, height = 7, dpi = 200)
+# 
+# ggsave("../../figures/elisa_plasma_proteomics/elisa_supp_subfigure_with_ci.png", plot = surv_p5_with_ci$plot, width = 11, height = 7, dpi = 200)
+# ggsave("../../figures/elisa_plasma_proteomics/elisa_supp_subfigure_with_ci.svg", plot = surv_p5_with_ci$plot, width = 11, height = 7, dpi = 200)
+
+# survival model with time to recurrence; combined group of all 4 proteins
+ttr_surv_data <- merge(latency_data, patient_meta_data[, .(LAB_ID, `Age at surgery (years)`, Sex, `Tumor localization`, `Type of resection`, `Time-to-reccurence (days)`)], by.x="lab_id", by.y="LAB_ID", all.x=T)
+ttr_surv_data$`Time-to-reccurence (days)`[ ttr_surv_data$`Time-to-reccurence (days)`=="/" ] = ""
+ttr_surv_data$`Time-to-reccurence (days)` <- as.numeric(ttr_surv_data$`Time-to-reccurence (days)`)
+ttr_surv_data <- rstatix::make_clean_names(ttr_surv_data)
+
+fit <- survfit(Surv(Time.to.reccurence..days., status) ~ ASAH1, data = ttr_surv_data)
+print(fit)
+# Change color, linetype by strata, risk.table color by strata
+ttr_surv_p1 <- ggsurvplot(fit,
+          pval = TRUE, conf.int = TRUE,
+          risk.table = TRUE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          linetype = "strata", # Change line type by groups
+          surv.median.line = "hv", # Specify median survival
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          palette = "Dark2"
+          ) +
+  labs(x="Time to Recurrence (Days)", y="Time to Recurrence probability")
+
+fit <- survfit(Surv(Time.to.reccurence..days., status) ~ SYNM, data = ttr_surv_data)
+print(fit)
+# Change color, linetype by strata, risk.table color by strata
+ttr_surv_p2 <- ggsurvplot(fit,
+          pval = TRUE, conf.int = TRUE,
+          risk.table = TRUE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          linetype = "strata", # Change line type by groups
+          surv.median.line = "hv", # Specify median survival
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          palette = "Dark2"
+          ) +
+  labs(x="Time to Recurrence (Days)", y="Time to Recurrence probability")
+
+fit <- survfit(Surv(Time.to.reccurence..days., status) ~ GPNMB, data = ttr_surv_data)
+print(fit)
+# Change color, linetype by strata, risk.table color by strata
+ttr_surv_p3 <- ggsurvplot(fit,
+          pval = TRUE, conf.int = TRUE,
+          risk.table = TRUE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          linetype = "strata", # Change line type by groups
+          surv.median.line = "hv", # Specify median survival
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          palette = "Dark2"
+          ) +
+  labs(x="Time to Recurrence (Days)", y="Time to Recurrence probability")
+
+fit <- survfit(Surv(Time.to.reccurence..days., status) ~ MMP9, data = ttr_surv_data)
+print(fit)
+# Change color, linetype by strata, risk.table color by strata
+ttr_surv_p4 <- ggsurvplot(fit,
+          pval = TRUE, conf.int = TRUE,
+          risk.table = TRUE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          linetype = "strata", # Change line type by groups
+          surv.median.line = "hv", # Specify median survival
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          palette = "Dark2"
+          ) +
+  labs(x="Time to Recurrence (Days)", y="Time to Recurrence probability")
+
+fit <- survfit(Surv(Time.to.reccurence..days., status) ~ ASAH1 + SYNM, data = ttr_surv_data)
+print(fit)
+# Change color, linetype by strata, risk.table color by strata
+ttr_surv_p5 <- ggsurvplot(fit,
+          pval = TRUE, conf.int = F,
+          risk.table = TRUE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          linetype = "strata", # Change line type by groups
+          surv.median.line = "hv", # Specify median survival
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          ) +
+  labs(x="Time to Recurrence (Days)", y="Time to Recurrence probability")  +
+  guides(col=guide_legend(nrow=2,byrow=TRUE))
+
+ttr_surv_p5_with_ci <- ggsurvplot(fit,
+          pval = TRUE, conf.int = T,
+          risk.table = TRUE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          linetype = "strata", # Change line type by groups
+          surv.median.line = "hv", # Specify median survival
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          ) +
+  labs(x="Time to Recurrence (Days)", y="Time to Recurrence probability")  +
+  guides(col=guide_legend(nrow=2,byrow=TRUE))
 ```
 
 \blandscape
@@ -2398,7 +2520,7 @@ ggsave("../../figures/elisa_plasma_proteomics/elisa_master_figure.svg", plot = m
 
 ```
 
-**Figure 3: A Promising Plasma Proteomics Signature for Stratification and Prediction of Recurrent Glioblastoma Multiforme.** Concentration of four proteins identified from TMT-MS tissue proteomics, were measured in patients' plasma samples using Enzyme-Linked Immunosorbent Assay (ELISA). (**a**) The log2 transformed protein concentration measurements demonstrates the difference in log2 concentration distributions between control, initial GBM and paired recurrent GBM populations. (**b**) Reducing the data of the four proteins ratios demonstrates an average trajectory and separation of $\frac{initial \quad GBM}{recurrent \quad GBM}$ vs $\frac{recurrent \quad GBM}{initial \quad GBM}$. (**c**)  Kaplan-Meyer plots showing... (**d**) The receiver operating characteristic (ROC) shows the potential of using plasma proteomics for separating each population, driven mostly from information contained in the proteins. (**e**) The potential of recurrent GBM / initial GBM protein ratios for predicting time to recurrence. Note, each point represents a single patient, so we may not be able to directly state a specific ratio can be used to infer to time to recurrence. However, we can still state given a specific patients ratio, we can predict that patients time to recurrence. 
+**Figure 3: A Promising Plasma Proteomics Signature for Stratification and Prediction of Recurrent Glioblastoma Multiforme.** Concentration of four proteins identified from TMT-MS tissue proteomics, were measured in patients' plasma samples using Enzyme-Linked Immunosorbent Assay (ELISA). (**a**) The log2 transformed protein concentration measurements demonstrates the difference in log2 concentration distributions between control, initial GBM and paired recurrent GBM populations. (**b**) Reducing the data of the four proteins ratios demonstrates an average trajectory and separation of $\frac{initial \quad GBM}{recurrent \quad GBM}$ vs $\frac{recurrent \quad GBM}{initial \quad GBM}$. (**c**)  Kaplan-Meyer plots showing demonstrating high concentration of ASAH1 and high concentration of SYNEMIN contributing to a higher probability of longer survival. (**d**) The receiver operating characteristic (ROC) shows the potential of using plasma proteomics for separating each population, driven mostly from information contained in the proteins. (**e**) The potential of recurrent GBM / initial GBM protein ratios for predicting time to recurrence. Note, each point represents a single patient, so we may not be able to directly state a specific ratio can be used to infer to time to recurrence. However, we can still state given a specific patients ratio, we can predict that patients time to recurrence. 
 
 > **Note:** I'm not entirely sure about plot e, and if my thinking/interpretation is right, but let me know what you think.
 
@@ -2471,7 +2593,6 @@ ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a
 ```
 **Supplemental Figure `r fig_counter` `r fig_counter <- fig_counter + 1`: Individual Patient Trajectory in Low Dimensional Space.** (**a**) A sparse partial least squares discriminant analysis shows separation between the different population groups, as well as an overall trajectory of a initial GBM patient going towards a recurrent GBM patient in a low dimensional space. (**b**) Individual trajectories demonstrate the individual variance of patients path to recurrence in a low-dimensional space.
 
-
 \pagebreak
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=18, fig.width=21, dpi=200}
@@ -2488,6 +2609,48 @@ ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_b
 ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_b.svg", fig_counter), plot = splsda_ratio_ind_traj_fig, width = 9, height = 8, dpi = 200)
 ```
 **Supplemental Figure `r fig_counter` `r fig_counter <- fig_counter + 1`: Information Contained in Plasma Proteomic Ratios for Initial GBM vs Recurrent GBM Stratification.** (**a**) Pairwise protein ratios shows promise of individual protein-pair ratios being able to stratify initial vs recurrent plasma GBM samples. (**b**) Individual trajectories demonstrate the individual variance of patients path to recurrence in a low-dimensional space using ratios.
+
+\pagebreak
+
+\blandscape
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=8.5, fig.width=11, dpi = 200}
+
+ttr_survival_plot_grid <- ggarrange(ttr_surv_p1$plot, ttr_surv_p2$plot, ttr_surv_p3$plot, ttr_surv_p4$plot, ncol = 4)
+
+supp_figure_4 <- ggarrange(ttr_survival_plot_grid, ggarrange(surv_p5$plot, ttr_surv_p5$plot, labels = c("B", "C")), labels = "A", nrow=2, ncol=1)
+supp_figure_4
+
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s.png", fig_counter), plot = supp_figure_4, width = 18, height = 18, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s.svg", fig_counter), plot = supp_figure_4, width = 18, height = 18, dpi = 200)
+
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a.png", fig_counter), plot = ttr_survival_plot_grid, width = 11, height = 8.5, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a.svg", fig_counter), plot = ttr_survival_plot_grid, width = 11, height = 8.5, dpi = 200)
+
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a_1.png", fig_counter), plot = ttr_surv_p1$plot, width = 11, height = 8.5, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a_1.svg", fig_counter), plot = ttr_surv_p1$plot, width = 11, height = 8.5, dpi = 200)
+
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a_2.png", fig_counter), plot = ttr_surv_p2$plot, width = 11, height = 8.5, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a_2.svg", fig_counter), plot = ttr_surv_p2$plot, width = 11, height = 8.5, dpi = 200)
+
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a_3.png", fig_counter), plot = ttr_surv_p3$plot, width = 11, height = 8.5, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a_3.svg", fig_counter), plot = ttr_surv_p3$plot, width = 11, height = 8.5, dpi = 200)
+
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a_4.png", fig_counter), plot = ttr_surv_p4$plot, width = 11, height = 8.5, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a_4.svg", fig_counter), plot = ttr_surv_p4$plot, width = 11, height = 8.5, dpi = 200)
+
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_b.png", fig_counter), plot = surv_p5$plot, width = 9, height = 8, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_b.svg", fig_counter), plot = surv_p5$plot, width = 9, height = 8, dpi = 200)
+
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_c.png", fig_counter), plot = ttr_surv_p5$plot, width = 9, height = 8, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_c.svg", fig_counter), plot = ttr_surv_p5$plot, width = 9, height = 8, dpi = 200)
+
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_c_with_ci.png", fig_counter), plot = ttr_surv_p5$plot, width = 9, height = 8, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_c_with_ci.svg", fig_counter), plot = ttr_surv_p5$plot, width = 9, height = 8, dpi = 200)
+```
+**Supplemental Figure `r fig_counter` `r fig_counter <- fig_counter + 1`: Survival and Time to Recurrence Analysis.** (**a**) Kaplan-Meyer plots showing demonstrating high concentration of ASAH1 and high concentration of SYNEMIN contributing to a higher probability of tumor recurrence occurring at a later date. (**b**) Kaplan-Meyer plots demonstrating the combination of both ASAH1 and SYNEMIN and their contribution of survival probability and time to recurrence.
+
+\elandscape
 
 \pagebreak
 
