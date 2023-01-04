@@ -77,6 +77,8 @@ installIfNeeded("survminer")
 installIfNeeded("caret")
 installIfNeeded("plotROC")
 installIfNeeded("mixOmics", "BIO")
+# parallilization
+installIfNeeded("future")
 ```
 
 <!-- # Helper Functions -->
@@ -232,6 +234,229 @@ filter_data <- function(data, filter_groups, method, grouping_column){
   }
   data_sub
 }
+
+#' Calculate the ratio of iGBM to rGBM and rGBM to iGBM for a given data frame
+#'
+#' @param data_long2 A data frame with columns "gene", "Number.x", "patient_state", "Age at surgery (years)", "Sex", "Tumor localization", "Type of resection", "MGMT promotor methylation", "p53 accumulation", "Ki67-Li", "EGFR vIII", "Treatment", "Time-to-reccurence (days)", "Latency (days)", and "conc".
+#' @return A data frame with the calculated ratios.
+get_ratio_data <- function(data_long2){
+  ## Data wrangling ----
+  ### iGBM over rGBM ratio
+  data_long2 %>% 
+    dplyr::mutate(conc = conc+1) %>% # Add one to avoid cases of 0 division
+    dplyr::group_by(gene, Number.x) %>%
+    dplyr::group_map(function(.d, ...){
+      .d <- as.data.table(.d)
+      .d %>% 
+        dplyr::group_by(gene, Number.x, patient_state, `Age at surgery (years)`, Sex, `Tumor localization`, `Type of resection`, `MGMT promotor methylation`, `p53 accumulation`, `Ki67-Li`, `EGFR vIII`, Treatment, `Time-to-reccurence (days)`, `Latency (days)`) %>% 
+        dplyr::summarise(agg_lab_id = paste(LAB_ID, collapse=";"),
+                         agg_collection_type = paste(collection_type, collapse = ";"), .groups = "keep") -> tmp
+      # print(.d)
+      if ( nrow(.d)==2 & any(!is.na(.d$manifestation_type)) ){
+        .d_initial <- .d[manifestation_type=="Initial manifestation"]
+        .d_second <- .d[manifestation_type=="Second manifestation"]
+        tmp$ratio <- .d_initial$conc / .d_second$conc
+      } else if (nrow(.d)==2) {
+        .d_initial <- .d[collection_type=="E1"]
+        .d_second <- .d[collection_type=="E2"]
+        tmp$ratio <- .d_initial$conc / .d_second$conc
+      } else {
+        tmp$ratio <- NA #.d$conc
+      }
+      return(tmp)
+    }, .keep = TRUE) %>%
+    rbindlist() %>%
+    dplyr::mutate(sample_comparison = plyr::mapvalues(patient_state, from=c(0, 1, 2), to=c("ctrl", "iGBMoverrGBM", "pre-surgery/post-surgery"))) %>%
+    dplyr::filter(sample_comparison=="iGBMoverrGBM" ) %>%
+    dplyr::mutate(log2_conc = log2(ratio)) %>%
+    # dplyr::group_by(gene, Number.x) %>%
+    # dplyr::add_count() %>%
+    # dplyr::filter(n==2) %>%
+    dplyr::mutate(class = plyr::mapvalues(patient_state, from=c(1), to=c("iGBMoverrGBM"))) -> pdata
+  
+  ### rGBM over iGBM
+  data_long2 %>% 
+    dplyr::mutate(conc = conc+1) %>% # Add one to avoid cases of 0 division
+    dplyr::filter(!is.na(manifestation_type) | patient_state!=0) %>%
+    dplyr::group_by(gene, Number.x) %>%
+    dplyr::group_map(function(.d, ...){
+      .d <- as.data.table(.d)
+      .d %>% 
+        dplyr::group_by(gene, Number.x, patient_state, `Age at surgery (years)`, Sex, `Tumor localization`, `Type of resection`, `MGMT promotor methylation`, `p53 accumulation`, `Ki67-Li`, `EGFR vIII`, Treatment, `Time-to-reccurence (days)`, `Latency (days)`) %>% 
+        dplyr::summarise(agg_lab_id = paste(LAB_ID, collapse=";"),
+                         agg_collection_type = paste(collection_type, collapse = ";"), .groups = "keep") -> tmp
+      # print(.d)
+      if ( nrow(.d)==2 & any(!is.na(.d$manifestation_type)) ){
+        .d_initial <- .d[manifestation_type=="Initial manifestation"]
+        .d_second <- .d[manifestation_type=="Second manifestation"]
+        tmp$ratio <- .d_second$conc / .d_initial$conc
+      } else if (nrow(.d)==2) {
+        .d_initial <- .d[collection_type=="E1"]
+        .d_second <- .d[collection_type=="E2"]
+        tmp$ratio <- .d_initial$conc / .d_second$conc
+      } else {
+        tmp$ratio <- NA #.d$conc
+      }
+      return(tmp)
+    }, .keep = TRUE) %>%
+    rbindlist() %>%
+    dplyr::mutate(sample_comparison = plyr::mapvalues(patient_state, from=c(0, 1, 2), to=c("ctrl", "rGBMoveriGBM", "pre-surgery/post-surgery"))) %>%
+    dplyr::filter(sample_comparison=="rGBMoveriGBM" ) %>%
+    dplyr::filter(grepl(";", agg_lab_id)) %>%
+    dplyr::mutate(log2_conc = log2(ratio)) %>%
+    # dplyr::group_by(gene, Number.x) %>%
+    # dplyr::add_count() %>%
+    # dplyr::filter(n==2) %>%
+    dplyr::mutate(class = plyr::mapvalues(patient_state, from=c(1), to=c("rGBMoveriGBM"))) -> pdata2
+  
+  ### Prepare final table with ratios
+  pdata %>%
+    dplyr::select(Number.x, gene, log2_conc) %>%
+    tidyr::pivot_wider(id_cols = "Number.x", names_from = "gene", values_from = "log2_conc") %>%
+    dplyr::mutate(class="iGBM") -> pdata
+  
+  pdata2 %>%
+    dplyr::select(Number.x, gene, log2_conc) %>%
+    tidyr::pivot_wider(id_cols = "Number.x", names_from = "gene", values_from = "log2_conc") %>%
+    dplyr::mutate(class="rGBM") -> pdata2
+  
+  
+  pdata <- rbindlist(list(pdata, pdata2))
+  
+  pdata <- merge(pdata, meta_dt, by="Number.x")
+  
+  ### Pivot Table to wide
+  pdata %>%
+    dplyr::select(Number.x, class, ASAH1, SYNEMIN, GPNMB, `MMP-9`, `Time-to-reccurence (days)`, `Latency (days)`, `Type of resection`) -> data_wide
+  
+  ## Remove non-paired patients
+  data_wide %>%
+    dplyr::group_by(Number.x) %>%
+    dplyr::add_count() %>%
+    dplyr::filter(n==2) %>%
+    dplyr::ungroup() %>%
+    dplyr::select(-n) -> data_wide
+  
+  # Prepare final table for analysis
+  train_df <- data_wide
+  train_df <- na.omit(train_df)  
+  train_df <- train_df[ !is.infinite(train_df$ASAH1) , ]
+  # Make Valid Column Names 
+  colnames(train_df) <- make.names(colnames(train_df))
+  train_df$class <- factor(train_df$class, levels=c("iGBM", "rGBM"))
+  colnames(train_df) <- make.names(colnames(train_df))
+  train_df <- as.data.table(train_df)
+  train_df$group=0
+  
+  return(train_df)
+}
+
+#' Generate train and test datasets for leave-one-patient-out cross-validation
+#'
+#' This function takes in a dataset and returns a list containing train and test datasets
+#' for leave-one-patient-out cross-validation. The test dataset consists of a single patient
+#' with the "rGBM" class. If the `test_patient_id` parameter is not `NULL`, the test dataset
+#' is subsetted using the provided patient ID. If the `test_patient_id` parameter is `NULL`,
+#' a random patient with the "rGBM" class is chosen for the test dataset. The train dataset
+#' consists of all other patients. If the `unique_random_train_patient_per_class` parameter is 
+#' `TRUE`, the train dataset is further subsetted to include a unique patient for each "iGBM"
+#' and "rGBM" class. The `test` parameter can be used to set the seed for the random number 
+#' generator when sampling patients for the test and train datasets. This is useful for testing 
+#' purposes.
+#'
+#' @param data A data frame containing the "Number.x" and "class" columns.
+#' @param test_patient_id An optional patient ID to use for the test dataset. If not provided,
+#' a random patient with the "rGBM" class is chosen.
+#' @param unique_random_train_patient_per_class A logical value indicating whether to include
+#' a unique patient for each "iGBM" and "rGBM" class in the train dataset.
+#' @param test A logical value indicating whether to set the seed for the random number
+#' generator for testing purposes.
+#' @return A list containing the train and test datasets.
+#' @export
+#' @examples
+#' get_train_test_for_loocv(data)
+get_train_test_for_loocv <- function(data, test_patient_id=NULL, unique_random_train_patient_per_class = TRUE, test = FALSE){
+  # Set seed for testing
+  if (test){
+    set.seed(2023)
+  }
+  
+  if (is.null(test_patient_id)){
+    # Sample single sample rGBM for Test data
+    test_patients <- sample(unique(data$Number.x), 1)
+    test_df <- subset(data, Number.x %in% test_patients & class == "rGBM")
+  } else {
+    # Subset for test data using provided test_patient_id
+    test_df <- subset(data, Number.x %in% test_patient_id & class == "rGBM")
+    test_patients <- test_patient_id
+  }
+  
+  # Subset data to remove sample in test data
+  data <- subset(data, !(Number.x %in% test_patients))
+  
+  if (unique_random_train_patient_per_class) {
+    # Sample a unique patient for each iGBM and rGBM class
+    igbm_train_patients <- sample(unique(data$Number.x[data$class == "iGBM"]), length(unique(data$Number.x))/2)
+    rgbm_train_patients <- setdiff(data$Number.x, igbm_train_patients)
+    
+    # Filter data to obtain training data with a unique patient for each iGBM and rGBM class
+    train_df <- subset(data, (Number.x %in% igbm_train_patients & class == "iGBM") | 
+                         (Number.x %in% rgbm_train_patients & class == "rGBM"))
+  } else {
+    train_df <- data
+  }
+  
+  return(list(train_df = train_df, test_df = test_df))
+}
+
+
+#' Calculate leave-one-patient-out cross-validation performance for splsda model
+#'
+#' This function takes in a dataset and a vector of patient IDs and returns a proportion
+#' of correct predictions using a leave-one-patient-out cross-validation approach. A splsda
+#' model is fit using the train data and used to make predictions on the test data. The
+#' `unique_random_train_patient_per_class` parameter can be used to specify whether to 
+#' include a unique patient for each "iGBM" and "rGBM" class in the train dataset. The
+#' function returns a proportion of correct predictions.
+#'
+#' @param ratio_data A data frame containing the ratio data and class labels.
+#' @param patient_ids A vector of patient IDs to use for the leave-one-patient-out
+#' cross-validation.
+#' @param unique_random_train_patient_per_class A logical value indicating whether to include
+#' a unique patient for each "iGBM" and "rGBM" class in the train dataset.
+#' @return A proportion of correct predictions.
+#' @examples
+#' splsda_loocv_perf(ratio_data, patient_ids)
+splsda_loocv_perf <- function(ratio_data, patient_ids, unique_random_train_patient_per_class=TRUE){
+  # Vector to store accuracy of LOOCV
+  acc_vec <- numeric(length(patient_ids))
+  i <- 1
+  for (test_patient_id in patient_ids){
+    # Split data into train and testing
+    train_test <- get_train_test_for_loocv(ratio_data, test_patient_id=test_patient_id, unique_random_train_patient_per_class=unique_random_train_patient_per_class)
+    train_df <- train_test$train_df
+    test_df <- train_test$test_df
+    # Perform splsda
+    MyResult.splsda <- mixOmics::splsda(train_df[, c(-1, -2, -7, -8, -9, -10)], train_df$class, keepX = c(4,4)) 
+    # Make prediction
+    pred_test <- predict(MyResult.splsda, test_df[, c(-1, -2, -7, -8, -9, -10)], test_df$class)
+    # evaluate the prediction accuracy for the first two components
+    predict.comp2 <- pred_test$class$mahalanobis.dist[,2]
+    # compute confusion matrix
+    conf_mat <- table(factor(predict.comp2, levels = levels(train_df$class)), test_df$class)
+    # print(conf_mat)
+    # compute accuracy
+    acc <- (conf_mat[1,1] + conf_mat[2,2])/(conf_mat[1,1] + conf_mat[2,2] + conf_mat[1,2] + conf_mat[2,1])
+    # message(sprintf("INFO: Test Patient %s - predicted class = %s - model accuracy = %s", test_patient_id, predict.comp2, acc))
+    # Store accuracy
+    acc_vec[i] <- acc
+    # update index
+    i <- i + 1
+  }
+  # Compute proportion of correct predictions
+  mean(acc_vec==1)
+}
+
 ```
 
 <!-- # Data File Paths -->
@@ -607,20 +832,20 @@ train_df_Sub %>%
 
 tmp_pdata <- ttr_delta %>% tidyr::pivot_longer(cols = c(ASAH1_delta, SYNEMIN_delta, GPNMB_delta, MMP.9_delta), names_to="gene", values_to="log2_conc")
 tmp_pdata$Time.to.reccurence..days. <- factor(tmp_pdata$Time.to.reccurence..days., levels=c("early", "middle", "late"))
-ggplot(data = tmp_pdata, aes(x=Time.to.reccurence..days., y=log2_conc, col=Time.to.reccurence..days.)) +
-  geom_point() +
-  labs(x="", y="log2( Concentration )") +
-  facet_wrap(~gene, scales = "free_y") +
-  theme_classic() +
-  theme(plot.title = element_text(hjust = 0.5, size=17),
-        axis.title = element_text(size = 17),
-        axis.text = element_text(size=16),
-        strip.text = element_text(size=16),
-        legend.title = element_text(size=16),
-        legend.text = element_text(size=15),
-        legend.position = "bottom", legend.box="vertical",) +
-  guides(fill=guide_legend(title="GBM\nOccurence", ncol=1),
-         col=guide_legend(title="Time to Recurrence"))
+# ggplot(data = tmp_pdata, aes(x=Time.to.reccurence..days., y=log2_conc, col=Time.to.reccurence..days.)) +
+#   geom_point() +
+#   labs(x="", y="log2( Concentration )") +
+#   facet_wrap(~gene, scales = "free_y") +
+#   theme_classic() +
+#   theme(plot.title = element_text(hjust = 0.5, size=17),
+#         axis.title = element_text(size = 17),
+#         axis.text = element_text(size=16),
+#         strip.text = element_text(size=16),
+#         legend.title = element_text(size=16),
+#         legend.text = element_text(size=15),
+#         legend.position = "bottom", legend.box="vertical",) +
+#   guides(fill=guide_legend(title="GBM\nOccurence", ncol=1),
+#          col=guide_legend(title="Time to Recurrence"))
 
 # Pre-surgery vs Post-surgery ----
 ## Build gg dataframe for plotting ----
@@ -976,7 +1201,7 @@ supp_figure_ratios2 <- p3
 # Master figure ----
 # subfigure_6 <- ggarrange(p1, p2, p3, ncol = 3)
 subfigure_6 <- p1
-subfigure_6
+# subfigure_6
 ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_a.png", plot = subfigure_6, width = 21, height = 11, dpi = 200)
 ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_a.svg", plot = subfigure_6, width = 21, height = 11, dpi = 200)
 
@@ -989,7 +1214,7 @@ ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_a_avg.svg", p
 
 <!-- # Dimensionality Reduction -->
 
-```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=11, fig.width=21, include=FALSE}
+```{r echo=FALSE, fig.height=11, fig.width=21, message=FALSE, warning=FALSE}
 # Dimensionality Reduction ----
 ## Data wrnagling ----
 data_long %>% 
@@ -1132,7 +1357,7 @@ splsda_ind_traj_fig <- p
 
 <!-- # Ratios -->
 
-```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=11, fig.width=21, include=FALSE}
+```{r echo=FALSE, fig.height=11, fig.width=21, message=FALSE, warning=FALSE}
 ## Data wrangling ----
 ### iGBM over rGBM ratio
 data_long %>% 
@@ -1396,7 +1621,7 @@ p <- ggplot() +
   ) +
   ggnewscale::new_scale_color() +
   geom_path(data=average_comp, aes(x=avg_comp1, y=avg_comp2, group = patient_id, col="Avg. iGBM\nto rGBM\nTrajectory"),
-            arrow = arrow(type = "closed",
+            arrow = arrow(type = "closed", ends='both',
                           length=unit(0.1, "inches")), size=2, alpha=0.8) +
   labs(x=sprintf("X-variate 1: %s%% explained variance", round(MyResult.splsda$prop_expl_var$X[1]*100)), y =sprintf("X-variate 2: %s%% explained variance", round(MyResult.splsda$prop_expl_var$X[2]*100))) +
   theme_classic() +
@@ -1431,7 +1656,7 @@ p <- ggplot() +
   ) +
   ggnewscale::new_scale_color() +
   geom_path(data=plsda_data[patient_id!="Ctrl"], aes(x=comp1, y=comp2, group = patient_id, col=patient_id),
-            arrow = arrow(type = "closed",
+            arrow = arrow(type = "closed", ends='both',
                           length=unit(0.1, "inches")), size=1.5, alpha=0.8) +
   labs(x=sprintf("X-variate 1: %s%% explained variance", round(MyResult.splsda$prop_expl_var$X[1]*100)), y =sprintf("X-variate 2: %s%% explained variance", round(MyResult.splsda$prop_expl_var$X[2]*100))) +
   theme_classic() +
@@ -1526,6 +1751,7 @@ This results in the following data used in the sPLS-DA model
 | 34         | iGBM  | -0.1768778 | 0.7865737  | 2.1875247  | 1.1604031  |
 
 **Test Data**
+
 | Patient ID | Class | ASAH1      | SYNMEIN    | GPNMB      | MMP-9      |
 |------------|-------|------------|------------|------------|------------|
 | 35          | rGBM  | -0.02599521 | -4.115453  | -2.892362  | -1.679008  |
@@ -1536,139 +1762,24 @@ This way we do not duplicate patient IDs (i.e. having iGBM/rGBM and rGBM/iGBM fo
 data_long2 <- data_long
 
 ## Data wrangling ----
-### iGBM over rGBM ratio
-data_long2 %>% 
-  dplyr::mutate(conc = conc+1) %>% # Add one to avoid cases of 0 division
-  dplyr::group_by(gene, Number.x) %>%
-  dplyr::group_map(function(.d, ...){
-    .d <- as.data.table(.d)
-    .d %>% 
-      dplyr::group_by(gene, Number.x, patient_state, `Age at surgery (years)`, Sex, `Tumor localization`, `Type of resection`, `MGMT promotor methylation`, `p53 accumulation`, `Ki67-Li`, `EGFR vIII`, Treatment, `Time-to-reccurence (days)`, `Latency (days)`) %>% 
-      dplyr::summarise(agg_lab_id = paste(LAB_ID, collapse=";"),
-                       agg_collection_type = paste(collection_type, collapse = ";"), .groups = "keep") -> tmp
-    # print(.d)
-    if ( nrow(.d)==2 & any(!is.na(.d$manifestation_type)) ){
-      .d_initial <- .d[manifestation_type=="Initial manifestation"]
-      .d_second <- .d[manifestation_type=="Second manifestation"]
-      tmp$ratio <- .d_initial$conc / .d_second$conc
-    } else if (nrow(.d)==2) {
-      .d_initial <- .d[collection_type=="E1"]
-      .d_second <- .d[collection_type=="E2"]
-      tmp$ratio <- .d_initial$conc / .d_second$conc
-    } else {
-      tmp$ratio <- NA #.d$conc
-    }
-    return(tmp)
-  }, .keep = TRUE) %>%
-  rbindlist() %>%
-  dplyr::mutate(sample_comparison = plyr::mapvalues(patient_state, from=c(0, 1, 2), to=c("ctrl", "iGBMoverrGBM", "pre-surgery/post-surgery"))) %>%
-  dplyr::filter(sample_comparison=="iGBMoverrGBM" ) %>%
-  dplyr::mutate(log2_conc = log2(ratio)) %>%
-  # dplyr::group_by(gene, Number.x) %>%
-  # dplyr::add_count() %>%
-  # dplyr::filter(n==2) %>%
-  dplyr::mutate(class = plyr::mapvalues(patient_state, from=c(1), to=c("iGBMoverrGBM"))) -> pdata
-
-### rGBM over iGBM
-data_long2 %>% 
-  dplyr::mutate(conc = conc+1) %>% # Add one to avoid cases of 0 division
-  dplyr::filter(!is.na(manifestation_type) | patient_state!=0) %>%
-  dplyr::group_by(gene, Number.x) %>%
-  dplyr::group_map(function(.d, ...){
-    .d <- as.data.table(.d)
-    .d %>% 
-      dplyr::group_by(gene, Number.x, patient_state, `Age at surgery (years)`, Sex, `Tumor localization`, `Type of resection`, `MGMT promotor methylation`, `p53 accumulation`, `Ki67-Li`, `EGFR vIII`, Treatment, `Time-to-reccurence (days)`, `Latency (days)`) %>% 
-      dplyr::summarise(agg_lab_id = paste(LAB_ID, collapse=";"),
-                       agg_collection_type = paste(collection_type, collapse = ";"), .groups = "keep") -> tmp
-    # print(.d)
-    if ( nrow(.d)==2 & any(!is.na(.d$manifestation_type)) ){
-      .d_initial <- .d[manifestation_type=="Initial manifestation"]
-      .d_second <- .d[manifestation_type=="Second manifestation"]
-      tmp$ratio <- .d_second$conc / .d_initial$conc
-    } else if (nrow(.d)==2) {
-      .d_initial <- .d[collection_type=="E1"]
-      .d_second <- .d[collection_type=="E2"]
-      tmp$ratio <- .d_initial$conc / .d_second$conc
-    } else {
-      tmp$ratio <- NA #.d$conc
-    }
-    return(tmp)
-  }, .keep = TRUE) %>%
-  rbindlist() %>%
-  dplyr::mutate(sample_comparison = plyr::mapvalues(patient_state, from=c(0, 1, 2), to=c("ctrl", "rGBMoveriGBM", "pre-surgery/post-surgery"))) %>%
-  dplyr::filter(sample_comparison=="rGBMoveriGBM" ) %>%
-  dplyr::filter(grepl(";", agg_lab_id)) %>%
-  dplyr::mutate(log2_conc = log2(ratio)) %>%
-  # dplyr::group_by(gene, Number.x) %>%
-  # dplyr::add_count() %>%
-  # dplyr::filter(n==2) %>%
-  dplyr::mutate(class = plyr::mapvalues(patient_state, from=c(1), to=c("rGBMoveriGBM"))) -> pdata2
-
-### Prepare final table with ratios
-pdata %>%
-  dplyr::select(Number.x, gene, log2_conc) %>%
-  tidyr::pivot_wider(id_cols = "Number.x", names_from = "gene", values_from = "log2_conc") %>%
-  dplyr::mutate(class="iGBM") -> pdata
-
-pdata2 %>%
-  dplyr::select(Number.x, gene, log2_conc) %>%
-  tidyr::pivot_wider(id_cols = "Number.x", names_from = "gene", values_from = "log2_conc") %>%
-  dplyr::mutate(class="rGBM") -> pdata2
-
-
-pdata <- rbindlist(list(pdata, pdata2))
-
-pdata <- merge(pdata, meta_dt, by="Number.x")
-
-### Pivot Table to wide
-pdata %>%
-  dplyr::select(Number.x, class, ASAH1, SYNEMIN, GPNMB, `MMP-9`, `Time-to-reccurence (days)`, `Latency (days)`, `Type of resection`) -> data_wide
-
-## Remove non-paired patients
-data_wide %>%
-  dplyr::group_by(Number.x) %>%
-  dplyr::add_count() %>%
-  dplyr::filter(n==2) %>%
-  dplyr::ungroup() %>%
-  dplyr::select(-n) -> data_wide
-
-# Prepare final table for analysis
-train_df <- data_wide
-train_df <- na.omit(train_df)  
-train_df <- train_df[ !is.infinite(train_df$ASAH1) , ]
-# Make Valid Column Names 
-colnames(train_df) <- make.names(colnames(train_df))
-train_df$class <- factor(train_df$class, levels=c("iGBM", "rGBM"))
-colnames(train_df) <- make.names(colnames(train_df))
-train_df <- as.data.table(train_df)
-train_df$group=0
-
-# Sample for Test data
-test_patients <- sample(unique(train_df$Number.x), 1)
-test_df <- train_df %>%
-  dplyr::filter(Number.x %in% test_patients) %>%
-  dplyr::filter(class=="rGBM")
-
-# Refine Training data
-train_df %>%
-  dplyr::filter(!(Number.x %in% test_patients)) -> train_df
-# Sample patients to select half patients for iGMB/rGBM and half patients for rGBM/iGBM
-igbm_train_patients <- sample(unique(train_df$Number.x), length(unique(train_df$Number.x))/2)
-rgbm_train_patients <- unique(train_df$Number.x)[ !unique(train_df$Number.x) %in% igbm_train_patients]
-
-train_df %>%
-  dplyr::filter((Number.x %in% igbm_train_patients & class=='iGBM') | (Number.x %in% rgbm_train_patients & class=='rGBM')) -> train_df
+# Get ratio data
+message("Get Ratio Data")
+ratio_data <- get_ratio_data(data_long2)
+message("Get Test Train Data")
+train_test <- get_train_test_for_loocv(ratio_data, test_patient_id=NULL, unique_random_train_patient_per_class=T)
+train_df <- train_test$train_df
+test_df <- train_test$test_df
+test_patients <- test_df$Number.x
 
 ## sPLS-DA of Ratios ----
-
+message("Perform sPLS-DA")
 MyResult.splsda <- mixOmics::splsda(train_df[, c(-1, -2, -7, -8, -9, -10)], train_df$class, keepX = c(4,4)) 
 
 pred_test <- predict(MyResult.splsda, test_df[, c(-1, -2, -7, -8, -9, -10)], test_df$class)
-
-
+message("Perform background predictions")
 background <- background.predict(MyResult.splsda, comp.predicted=2, dist = "max.dist", xlim = c(min(c(MyResult.splsda$variates$X, pred_test$variates)), max(c(MyResult.splsda$variates$X, pred_test$variates))), ylim = c(min(c(MyResult.splsda$variates$X, pred_test$variates)), max(c(MyResult.splsda$variates$X, pred_test$variates))))
-
-plsda_data <- cbind( patient_id=na.omit(data_wide %>% dplyr::filter(!(Number.x %in% test_patients)))  %>% dplyr::pull(Number.x), class=train_df$class, as.data.frame(MyResult.splsda$variates$X))
+message("Prepare data for plotting")
+plsda_data <- cbind( patient_id=train_df  %>% dplyr::pull(Number.x), class=train_df$class, as.data.frame(MyResult.splsda$variates$X))
 plsda_data$patient_id <- as.factor(plsda_data$patient_id)
 plsda_data %>%
   dplyr::arrange(class) -> plsda_data
@@ -1697,6 +1808,7 @@ for(i in 1:length(background))
 
 background = do.call(rbind,background)
 
+message("Gnerate sPLS-DA Plot")
 p <- ggplot() +
   geom_polygon(data = background,aes(x=Var1, y=Var2,
                                      fill = col), inherit.aes = FALSE, show.legend=FALSE, alpha=0.2) +
@@ -1731,51 +1843,63 @@ p <- ggplot() +
 
 splsda_better_ratio_avg_traj_fig <- p
 splsda_better_ratio_avg_traj_fig
-# ggsave("../../figures/elisa_plasma_proteomics/elisa_supp_figure3_subfigure_b.png", plot = splsda_ratio_avg_traj_fig, width = 11, height = 8.5, dpi = 200)
-# ggsave("../../figures/elisa_plasma_proteomics/elisa_supp_figure3_subfigure_b.svg", plot = splsda_ratio_avg_traj_fig, width = 11, height = 8.5, dpi = 200)
-# ggsave("../../figures/elisa_plasma_proteomics/elisa_supp_subfigure_b.png", plot = splsda_ratio_avg_traj_fig, width = 11, height = 8.5, dpi = 200)
-# ggsave("../../figures/elisa_plasma_proteomics/elisa_supp_subfigure_b.svg", plot = splsda_ratio_avg_traj_fig, width = 11, height = 8.5, dpi = 200)
-
-# p <- ggplot() +
-#   geom_polygon(data = background,aes(x=Var1, y=Var2,
-#                                      fill = col), inherit.aes = FALSE, show.legend=FALSE, alpha=0.2) +
-#   scale_fill_manual(values=c( "#388ECC", "#F68B33")) +
-#   # geom_point(data=plsda_data[patient_id=="Ctrl"], aes(x=comp1, y=comp2, shape=class), col="black", size=3) +
-#   # geom_point(data=plsda_data[patient_id!="Ctrl"], aes(x=comp1, y=comp2, col=class, shape=class), size=3) +
-#   geom_point(data=plsda_data, aes(x=comp1, y=comp2, col=class, shape=class), size=3) +
-#   scale_shape_manual(values=c(15, 16, 17)) +
-#   scale_color_manual(values=c( "#388ECC", "#F68B33"), labels=c(expression(paste(frac('initial GBM', 'recurrent GBM'), " Ratio")),
-#                                                                expression(paste(frac('recurrent GBM', 'initial GBM'), " Ratio")))
-#   ) +
-#   ggnewscale::new_scale_color() +
-#   geom_path(data=plsda_data[patient_id!="Ctrl"], aes(x=comp1, y=comp2, group = patient_id, col=patient_id),
-#             arrow = arrow(type = "closed", ends='both',
-#                           length=unit(0.1, "inches")), size=1.5, alpha=0.8) +
-#   ggnewscale::new_scale_color() +
-#   geom_point(data=data.frame(x=pred_test$variates[,1], y=pred_test$variates[,2]), aes(x=x, y=y, col="black"), size=3, shape=3) +
-#   scale_color_manual(values=c( "black"), labels=c(expression(paste(frac('recurrent GBM', 'initial GBM'), " Ratio")))) +
-#   labs(x=sprintf("X-variate 1: %s%% explained variance", round(MyResult.splsda$prop_expl_var$X[1]*100)), y =sprintf("X-variate 2: %s%% explained variance", round(MyResult.splsda$prop_expl_var$X[2]*100))) +
-#   theme_classic() +
-#   theme(plot.title = element_text(hjust = 0.5, size=17),
-#         axis.title = element_text(size = 17),
-#         axis.text = element_text(size=16),
-#         strip.text = element_text(size=16),
-#         legend.title = element_text(size=16),
-#         legend.text = element_text(size=15),
-#         legend.position = "right", legend.box="vertical",) +
-#   guides(shape="none",
-#          colour_new_new=guide_legend(title="Class", ncol=1, byrow = T),
-#          colour_new=guide_legend(title="Patient ID\nTrajectory", ncol=2),         
-#          col=guide_legend(title="Prediction on\nHeld Out Patients", ncol=1))
-# 
-# splsda_randomized_ratio_ind_traj_fig <- p
-# splsda_randomized_ratio_ind_traj_fig
-# ggsave("../../figures/elisa_plasma_proteomics/elisa_supp_figure3_subfigure_c.png", plot = splsda_ratio_ind_traj_fig, width = 11, height = 8.5, dpi = 200)
-# ggsave("../../figures/elisa_plasma_proteomics/elisa_supp_figure3_subfigure_c.svg", plot = splsda_ratio_ind_traj_fig, width = 11, height = 8.5, dpi = 200)
-
-
+ggsave("../../figures/elisa_plasma_proteomics/elisa_splada_ratio_random.png", plot = splsda_better_ratio_avg_traj_fig, width = 11, height = 8.5, dpi = 200)
+ggsave("../../figures/elisa_plasma_proteomics/elisa_splada_ratio_random.svg", plot = splsda_better_ratio_avg_traj_fig, width = 11, height = 8.5, dpi = 200)
 
 ```
+
+# Comparison of Using All patients or Subsetting for Unique Patients per Class
+
+Lets compare to see if it makes a difference whether we use all patients for both iGBM/rGBM and rGBM/iGBM classes vs only using a unique set of patients for iGBM/rGBM and rGBM/iGBM (i.e. no duplicate patient in each class)
+
+1. I perform a leave one out cross validation, leaving one patient out and using the rest of the data for training. 
+2. The left out patient gets using for assessing model performance accuracy. 
+3. The mean accuracy of each left out sample is computed
+4. Steps 1-3 is repeated 100 times to assess the variation in mean accuracy of the LOOCV
+5. 1-4 is performed for both cases of using all patients and using unique subset patients
+
+```{r echo=FALSE, fig.height=8.5, fig.width=11, message=FALSE, warning=FALSE}
+# Get ratio data
+ratio_data <- get_ratio_data(data_long2)
+# Get unique set of patient ids
+patient_ids <- unique(ratio_data$Number.x)
+
+plan(multisession(workers = 8))
+
+# Compute mean accuracy when using unique patients per class for 100 repeats
+mean_acc_rep_unique <- future.apply::future_replicate(100, splsda_loocv_perf(ratio_data, patient_ids, unique_random_train_patient_per_class=TRUE))
+# hist(mean_acc_rep_unique)
+message("Unique Patient Class Split: 95% Confidence Interval:")
+print(c(quantile(mean_acc_rep_unique, .025), quantile(mean_acc_rep_unique, .975)))
+
+# Compute mean accuracy when using all patients per class for 100 repeats
+mean_acc_rep_all <- future.apply::future_replicate(100, splsda_loocv_perf(ratio_data, patient_ids, unique_random_train_patient_per_class=FALSE))
+# hist(mean_acc_rep_all)
+message("All Patients per Class: 95% Confidence Interval:")
+print(c(quantile(mean_acc_rep_all, .025), quantile(mean_acc_rep_all, .975)))
+
+plan(sequential)
+
+df_plot <- rbind(data.frame(method="Unique Patient Class Split", mean_acc=mean_acc_rep_unique), data.frame(method="All Patients per Class", mean_acc=mean_acc_rep_all))
+df_plot$method <- factor(df_plot$method, levels = c("All Patients per Class", "Unique Patient Class Split"))
+
+ggplot(df_plot, aes(x=mean_acc, fill=method)) +
+  geom_histogram(binwidth = 0.15, colour = "black") +
+  scale_x_continuous(breaks = seq(0, 1, by = 0.2)) +
+  scale_fill_brewer(palette = "Dark2") +
+  stat_bin(binwidth = 0.15, aes(label=..count..), vjust=-0.5, geom = "text") +
+  facet_wrap(~method) +
+  labs(x="Mean Accuracy (LOOCV)", y="Count") +
+  ggtitle("Mean Accuracy of LOOCV for 100 Repeats") +
+  theme_classic() + 
+  theme(plot.title = element_text(hjust = 0.5, size=17),
+        axis.title = element_text(size = 17),
+        axis.text = element_text(size=16),
+        strip.text = element_text(size=16),
+        legend.title = element_text(size=16),
+        legend.text = element_text(size=15)) 
+```
+
 
 <!-- # ROC Prediction Analysis -->
 
@@ -2223,7 +2347,7 @@ master_auc_data[Model %in% c("Elastic Logit")] %>%
   dplyr::mutate(AUC = sprintf("AUC: %s%%", round(AUC*100, 0))) %>%
   tidyr::pivot_wider(id_cols = "Comparison", names_from = Model, values_from = AUC) -> auc_annotation_tbl
 
-table_theme <- ttheme_minimal(core = list(fg_params=list(col=(RColorBrewer::brewer.pal(5, "Dark2")))))
+table_theme <- ttheme_minimal(core = list(fg_params=list(col=(RColorBrewer::brewer.pal(5, "Dark2")))), base_size = 13)
 auc_grob <- tableGrob(auc_annotation_tbl, rows=NULL, theme = table_theme)
 
 g <- ggplot(master_roc_data[Model %in% c("Elastic Logit")], aes(m=GBM, d=factor(obs, levels = c("ctrl", "GBM")), color=Comparison), linetype='solid') +
@@ -2233,10 +2357,11 @@ g <- ggplot(master_roc_data[Model %in% c("Elastic Logit")], aes(m=GBM, d=factor(
   coord_equal() +
   style_roc(x="1 - Specificity", y="Sensitivity") +
   annotation_custom(auc_grob, xmin=0.25, xmax=0.95, ymin=0.10, ymax=0.30) +
-  theme(axis.title = element_text(size=14),
-        axis.text = element_text(size=13),
+  theme(axis.title = element_text(size=16),
+        axis.text = element_text(size=15),
         legend.title = element_text(size=14),
-        legend.text = element_text(size=13))
+        legend.text = element_text(size=13)) +
+  guides(col="none")
 
 ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_d.png", plot = g, width = 11, height = 8.5, dpi = 200)
 ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_d.svg", plot = g, width = 11, height = 8.5, dpi = 200)
@@ -2649,7 +2774,7 @@ latency_data %>%
 
 fit <- survfit(Surv(Latency..days., status) ~ ASAH1, data = latency_data)
 print(fit)
-n_data <- table(ttr_surv_data[!is.na(ttr_surv_data$Latency..days.)]$ASAH1)
+n_data <- table(latency_data[!is.na(latency_data$Latency..days.)]$ASAH1)
 # Change color, linetype by strata, risk.table color by strata
 surv_p1 <- ggsurvplot(fit,
           pval = TRUE, pval.coord = c(1700, 0.95), conf.int = TRUE,
@@ -2660,18 +2785,19 @@ surv_p1 <- ggsurvplot(fit,
           ggtheme = theme_bw(), # Change ggplot2 theme
           palette = "Dark2",
           legend.title = "",
-          legend.labs = c(sprintf("ASAH1=high (n=%s)", n_data[1]), sprintf("ASAH1=low (n=%s)", n_data[2]))
+          legend.labs = c(sprintf("ASAH1=high\n(n=%s)", n_data[1]), sprintf("ASAH1=low\n(n=%s)", n_data[2]))
           ) +
   labs(x="Latency Time (Days)")
 
 surv_p1 <- surv_p1$plot +
   theme(axis.title = element_text(size=16),
         axis.text = element_text(size=15),
-        legend.text = element_text(size=13))
+        legend.text = element_text(size=12),
+        legend.spacing.x = unit(0.25, 'cm')) 
 
 fit <- survfit(Surv(Latency..days., status) ~ SYNM, data = latency_data)
 print(fit)
-n_data <- table(ttr_surv_data[!is.na(ttr_surv_data$Latency..days.)]$SYNM)
+n_data <- table(latency_data[!is.na(latency_data$Latency..days.)]$SYNM)
 # Change color, linetype by strata, risk.table color by strata
 surv_p2 <- ggsurvplot(fit,
           pval = TRUE, pval.coord = c(1700, 0.95), conf.int = TRUE,
@@ -2682,18 +2808,19 @@ surv_p2 <- ggsurvplot(fit,
           ggtheme = theme_bw(), # Change ggplot2 theme
           palette = "Dark2",
           legend.title = "",
-          legend.labs = c(sprintf("SYNM=high (n=%s)", n_data[1]), sprintf("SYNM=low (n=%s)", n_data[2]))
+          legend.labs = c(sprintf("SYNM=high\n(n=%s)", n_data[1]), sprintf("SYNM=low\n(n=%s)", n_data[2]))
           ) +
   labs(x="Latency Time (Days)")
 
 surv_p2 <- surv_p2$plot +
   theme(axis.title = element_text(size=16),
         axis.text = element_text(size=15),
-        legend.text = element_text(size=13))
+        legend.text = element_text(size=12),
+        legend.spacing.x = unit(0.25, 'cm'))
 
 fit <- survfit(Surv(Latency..days., status) ~ GPNMB, data = latency_data)
 print(fit)
-n_data <- table(ttr_surv_data[!is.na(ttr_surv_data$Latency..days.)]$GPNMB)
+n_data <- table(latency_data[!is.na(latency_data$Latency..days.)]$GPNMB)
 # Change color, linetype by strata, risk.table color by strata
 surv_p3 <- ggsurvplot(fit,
           pval = TRUE, pval.coord = c(1700, 0.95), conf.int = TRUE,
@@ -2704,18 +2831,19 @@ surv_p3 <- ggsurvplot(fit,
           ggtheme = theme_bw(), # Change ggplot2 theme
           palette = "Dark2",
           legend.title = "",
-          legend.labs = c(sprintf("GPNMB=high (n=%s)", n_data[1]), sprintf("GPNMB=low (n=%s)", n_data[2]))
+          legend.labs = c(sprintf("GPNMB=high\n(n=%s)", n_data[1]), sprintf("GPNMB=low\n(n=%s)", n_data[2]))
           ) +
   labs(x="Latency Time (Days)")
 
 surv_p3 <- surv_p3$plot +
   theme(axis.title = element_text(size=16),
         axis.text = element_text(size=15),
-        legend.text = element_text(size=13))
+        legend.text = element_text(size=12),
+        legend.spacing.x = unit(0.25, 'cm'))
 
 fit <- survfit(Surv(Latency..days., status) ~ MMP9, data = latency_data)
 print(fit)
-n_data <- table(ttr_surv_data[!is.na(ttr_surv_data$Latency..days.)]$MMP9)
+n_data <- table(latency_data[!is.na(latency_data$Latency..days.)]$MMP9)
 # Change color, linetype by strata, risk.table color by strata
 surv_p4 <- ggsurvplot(fit,
           pval = TRUE, pval.coord = c(1700, 0.95), conf.int = TRUE,
@@ -2726,14 +2854,15 @@ surv_p4 <- ggsurvplot(fit,
           ggtheme = theme_bw(), # Change ggplot2 theme
           palette = "Dark2",
           legend.title = "",
-          legend.labs = c(sprintf("MMP9=high (n=%s)", n_data[1]), sprintf("MMP9=low (n=%s)", n_data[2]))
+          legend.labs = c(sprintf("MMP9=high\n(n=%s)", n_data[1]), sprintf("MMP9=low\n(n=%s)", n_data[2]))
           ) +
   labs(x="Latency Time (Days)")
 
 surv_p4 <- surv_p4$plot +
   theme(axis.title = element_text(size=16),
         axis.text = element_text(size=15),
-        legend.text = element_text(size=13))
+        legend.text = element_text(size=12),
+        legend.spacing.x = unit(0.25, 'cm'))
 
 fit <- survfit(Surv(Latency..days., status) ~ ASAH1 + SYNM, data = latency_data)
 print(fit)
@@ -2754,7 +2883,8 @@ surv_p5 <- ggsurvplot(fit,
 surv_p5 <- surv_p5$plot +
   theme(axis.title = element_text(size=16),
         axis.text = element_text(size=15),
-        legend.text = element_text(size=13),
+        legend.text = element_text(size=12),
+        legend.spacing.x = unit(0.25, 'cm'),
         legend.position = "bottom")
 
 surv_p5_with_ci <- ggsurvplot(fit,
@@ -2773,24 +2903,25 @@ surv_p5_with_ci <- ggsurvplot(fit,
 surv_p5_with_ci <- surv_p5_with_ci$plot +
   theme(axis.title = element_text(size=16),
         axis.text = element_text(size=15),
-        legend.text = element_text(size=13),
+        legend.text = element_text(size=12),
+        legend.spacing.x = unit(0.25, 'cm'),
         legend.position = "bottom")
 
-survival_plot_grid <- ggarrange(surv_p1$plot, surv_p2$plot, surv_p3$plot, surv_p4$plot, ncol = 4)
+survival_plot_grid <- ggarrange(surv_p1, surv_p2, surv_p3, surv_p4, ncol = 4)
 ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_c.png", plot = survival_plot_grid, width = 18, height = 7, dpi = 200)
 ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_c.svg", plot = survival_plot_grid, width = 18, height = 7, dpi = 200)
 
-ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_c1.png", plot = surv_p1$plot, width = 11, height = 7, dpi = 200)
-ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_c1.svg", plot = surv_p1$plot, width = 11, height = 7, dpi = 200)
+ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_c1.png", plot = surv_p1, width = 11, height = 7, dpi = 200)
+ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_c1.svg", plot = surv_p1, width = 11, height = 7, dpi = 200)
 
-ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_c2.png", plot = surv_p2$plot, width = 11, height = 7, dpi = 200)
-ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_c2.svg", plot = surv_p2$plot, width = 11, height = 7, dpi = 200)
+ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_c2.png", plot = surv_p2, width = 11, height = 7, dpi = 200)
+ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_c2.svg", plot = surv_p2, width = 11, height = 7, dpi = 200)
 
-ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_c3.png", plot = surv_p3$plot, width = 11, height = 7, dpi = 200)
-ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_c3.svg", plot = surv_p3$plot, width = 11, height = 7, dpi = 200)
+ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_c3.png", plot = surv_p3, width = 11, height = 7, dpi = 200)
+ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_c3.svg", plot = surv_p3, width = 11, height = 7, dpi = 200)
 
-ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_c4.png", plot = surv_p4$plot, width = 11, height = 7, dpi = 200)
-ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_c4.svg", plot = surv_p4$plot, width = 11, height = 7, dpi = 200)
+ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_c4.png", plot = surv_p4, width = 11, height = 7, dpi = 200)
+ggsave("../../figures/elisa_plasma_proteomics/elisa_main_subfigure_c4.svg", plot = surv_p4, width = 11, height = 7, dpi = 200)
 
 # ggsave("../../figures/elisa_plasma_proteomics/elisa_supp_subfigure_.png", plot = surv_p5$plot, width = 11, height = 7, dpi = 200)
 # ggsave("../../figures/elisa_plasma_proteomics/elisa_supp_subfigure_.svg", plot = surv_p5$plot, width = 11, height = 7, dpi = 200)
@@ -2825,7 +2956,8 @@ ttr_surv_p1 <- ggsurvplot(fit,
 ttr_surv_p1 <- ttr_surv_p1$plot +
   theme(axis.title = element_text(size=16),
         axis.text = element_text(size=15),
-        legend.text = element_text(size=13),
+        legend.text = element_text(size=12),
+        legend.spacing.x = unit(0.25, 'cm'),
         legend.position = "bottom")
 
 fit <- survfit(Surv(Time.to.reccurence..days., status) ~ SYNM, data = ttr_surv_data)
@@ -2848,7 +2980,8 @@ ttr_surv_p2 <- ggsurvplot(fit,
 ttr_surv_p2 <- ttr_surv_p2$plot +
   theme(axis.title = element_text(size=16),
         axis.text = element_text(size=15),
-        legend.text = element_text(size=13),
+        legend.text = element_text(size=12),
+        legend.spacing.x = unit(0.25, 'cm'),
         legend.position = "bottom")
 
 fit <- survfit(Surv(Time.to.reccurence..days., status) ~ GPNMB, data = ttr_surv_data)
@@ -2871,7 +3004,8 @@ ttr_surv_p3 <- ggsurvplot(fit,
 ttr_surv_p3 <- ttr_surv_p3$plot +
   theme(axis.title = element_text(size=16),
         axis.text = element_text(size=15),
-        legend.text = element_text(size=13),
+        legend.text = element_text(size=12),
+        legend.spacing.x = unit(0.25, 'cm'),
         legend.position = "bottom")
 
 fit <- survfit(Surv(Time.to.reccurence..days., status) ~ MMP9, data = ttr_surv_data)
@@ -2894,7 +3028,8 @@ ttr_surv_p4 <- ggsurvplot(fit,
 ttr_surv_p4 <- ttr_surv_p4$plot +
   theme(axis.title = element_text(size=16),
         axis.text = element_text(size=15),
-        legend.text = element_text(size=13),
+        legend.text = element_text(size=12),
+        legend.spacing.x = unit(0.25, 'cm'),
         legend.position = "bottom")
 
 fit <- survfit(Surv(Time.to.reccurence..days., status) ~ ASAH1 + SYNM, data = ttr_surv_data)
@@ -2908,15 +3043,16 @@ ttr_surv_p5 <- ggsurvplot(fit,
           surv.median.line = "hv", # Specify median survival
           ggtheme = theme_bw(), # Change ggplot2 theme
           legend.title = "",
-          legend.labs = c(sprintf("ASAH1=high, SYNM=high\n(n=%s)", fit$n.risk[1]), sprintf("ASAH1=high, SYNM=low\n(n=%s)", fit$n.risk[fit$n.risk[1]+1]), sprintf("ASAH1=low, SYNM=high\n(n=%s)", fit$n.risk[fit$n.risk[1]+1+fit$n.risk[fit$n.risk[1]+1]]), sprintf("ASAH1=low, SYNM=low\n(n=%s)", fit$n.risk[fit$n.risk[1]+1+fit$n.risk[fit$n.risk[1]+1]+fit$n.risk[fit$n.risk[1]+1+fit$n.risk[fit$n.risk[1]+1]]]))
+          legend.labs = c(sprintf("ASAH1=high, SYNM=high (n=%s)", fit$n.risk[1]), sprintf("ASAH1=high, SYNM=low (n=%s)", fit$n.risk[fit$n.risk[1]+1]), sprintf("ASAH1=low, SYNM=high (n=%s)", fit$n.risk[fit$n.risk[1]+1+fit$n.risk[fit$n.risk[1]+1]]), sprintf("ASAH1=low, SYNM=low (n=%s)", fit$n.risk[fit$n.risk[1]+1+fit$n.risk[fit$n.risk[1]+1]+fit$n.risk[fit$n.risk[1]+1+fit$n.risk[fit$n.risk[1]+1]]]))
           ) +
   labs(x="Time to Recurrence (Days)", y="Time to Recurrence probability")  +
-  guides(col=guide_legend(nrow=2,byrow=TRUE))
+  guides(col=guide_legend(nrow=4,byrow=TRUE))
 
 ttr_surv_p5 <- ttr_surv_p5$plot +
   theme(axis.title = element_text(size=16),
         axis.text = element_text(size=15),
-        legend.text = element_text(size=13),
+        legend.text = element_text(size=12),
+        legend.spacing.x = unit(0.25, 'cm'),
         legend.position = "bottom")
 
 ttr_surv_p5_with_ci <- ggsurvplot(fit,
@@ -2935,7 +3071,8 @@ ttr_surv_p5_with_ci <- ggsurvplot(fit,
 ttr_surv_p5_with_ci <- ttr_surv_p5_with_ci$plot +
   theme(axis.title = element_text(size=16),
         axis.text = element_text(size=15),
-        legend.text = element_text(size=13),
+        legend.text = element_text(size=12),
+        legend.spacing.x = unit(0.25, 'cm'),
         legend.position = "bottom")
 ```
 
@@ -2962,11 +3099,7 @@ ggsave("../../figures/elisa_plasma_proteomics/elisa_master_figure.svg", plot = m
 ```
 
 <!-- **Figure 3: A Promising Plasma Proteomics Signature for Stratification and Prediction of Recurrent Glioblastoma Multiforme.** Concentration of four proteins identified from TMT-MS tissue proteomics, were measured in patients' plasma samples using Enzyme-Linked Immunosorbent Assay (ELISA). (**a**) The log2 transformed protein concentration measurements demonstrates the difference in log2 concentration distributions between control, initial GBM and paired recurrent GBM populations. Note, a patient was omitted due to being an outlier, see Supp Figure X for full set of patients. (**b**) Reducing the data of the four proteins ratios demonstrates an average trajectory and separation of $\frac{initial \quad GBM}{recurrent \quad GBM}$ vs $\frac{recurrent \quad GBM}{initial \quad GBM}$. (**c**)  Kaplan-Meyer plots showing demonstrating high concentration of ASAH1 and high concentration of SYNEMIN contributing to a higher probability of longer survival. (**d**) The receiver operating characteristic (ROC) shows the potential of using plasma proteomics for separating each population, driven mostly from information contained in the proteins. (**e**) The potential of recurrent GBM / initial GBM protein ratios for predicting time to recurrence. Note, each point represents a single patient, so we may not be able to directly state a specific ratio can be used to infer to time to recurrence. However, we can still state given a specific patients ratio, we can predict that patients time to recurrence.  -->
-**Figure 3: A Promising Plasma Proteomics Signature for Stratification and Prediction of Recurrent Glioblastoma Multiforme.** Concentration of four proteins identified from TMT-MS tissue proteomics, were measured in patients' plasma samples using Enzyme-Linked Immunosorbent Assay (ELISA). (**a**) The log2 transformed protein concentration measurements demonstrates the difference in log2 concentration distributions between control, initial GBM and paired recurrent GBM populations. Note, a patient was omitted due to being an outlier, see Supp Figure X for full set of patients. (**b**) Reducing the data of the four proteins ratios demonstrates an average trajectory and separation of $\frac{initial \quad GBM}{recurrent \quad GBM}$ vs $\frac{recurrent \quad GBM}{initial \quad GBM}$. (**c**)  Kaplan-Meyer plots showing demonstrating high concentration of ASAH1 and high concentration of SYNEMIN contributing to a higher probability of longer survival. (**d**) The receiver operating characteristic (ROC) shows the potential of using plasma proteomics for separating each population, driven mostly from information contained in the proteins. (**e**) The potential of recurrent GBM / initial GBM protein ratios for predicting time to recurrence. Note, each point represents a single patient, so we may not be able to directly state a specific ratio can be used to infer to time to recurrence. However, we can still state given a specific patients ratio, we can predict that patients time to recurrence. 
-
-> **Note:** I'm not entirely sure about plot e, and if my thinking/interpretation is right, but let me know what you think.
-
-> **Note:** I excluded the pre-surgery vs post-surgery distribution boxplots, because I didn't do any prediction analyses on that set. We can still include it in the supplement if we thing there is anything interesting there to show?
+**Figure 3: A Promising Plasma Proteomics Signature for Stratification and Prediction of Recurrent Glioblastoma Multiforme.** Concentration of four proteins identified from TMT-MS tissue proteomics, were measured in patients' plasma samples using Enzyme-Linked Immunosorbent Assay (ELISA). (**a**) The log2 transformed protein concentration measurements demonstrates the difference in log2 concentration distributions between control, initial GBM and paired recurrent GBM populations. Note, a patient was omitted due to being an outlier, see Supp Figure X for full set of patients. (**b**)  Kaplan-Meyer plots showing demonstrating high concentration of ASAH1 and high concentration of SYNEMIN contributing to a higher probability of tumor recurrence occurring at a later date. (**c**) The receiver operating characteristic (ROC) shows the potential of using plasma proteomics for separating each population, driven mostly from information contained in the proteins. (**d**) Reducing the data of the four proteins ratios demonstrates an average trajectory and separation of $\frac{initial \quad GBM}{recurrent \quad GBM}$ vs $\frac{recurrent \quad GBM}{initial \quad GBM}$. One patient was randomly left out as a test patient (black + point), 4 samples were randomly sampled to represent $\frac{initial \quad GBM}{recurrent \quad GBM}$ (blue points) and remaining 4 samples were used to represent $\frac{recurrent \quad GBM}{initial \quad GBM}$.
 
 \elandscape
 
@@ -3064,37 +3197,38 @@ ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_b
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=8.5, fig.width=11, dpi = 200}
 
-ttr_survival_plot_grid <- ggarrange(ttr_surv_p1$plot, ttr_surv_p2$plot, ttr_surv_p3$plot, ttr_surv_p4$plot, ncol = 4)
+ttr_survival_plot_grid <- ggarrange(surv_p1, surv_p2, surv_p3, surv_p4, ncol = 4, labels="A")
+bottom_plots <- ggarrange(ggarrange(ttr_surv_p3, ttr_surv_p4, ncol=2), ggarrange(surv_p5, ttr_surv_p5, ncol=2), labels=c("B", "C"))
 
-supp_figure_4 <- ggarrange(ttr_survival_plot_grid, ggarrange(surv_p5$plot, ttr_surv_p5$plot, labels = c("B", "C")), labels = "A", nrow=2, ncol=1)
+supp_figure_4 <- ggarrange(ttr_survival_plot_grid, bottom_plots, nrow=2, ncol=1)
 supp_figure_4
 
-ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s.png", fig_counter), plot = supp_figure_4, width = 18, height = 18, dpi = 200)
-ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s.svg", fig_counter), plot = supp_figure_4, width = 18, height = 18, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s.png", fig_counter), plot = supp_figure_4, width = 25, height = 15, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s.svg", fig_counter), plot = supp_figure_4, width = 25, height = 15, dpi = 200)
 
 ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a.png", fig_counter), plot = ttr_survival_plot_grid, width = 11, height = 8.5, dpi = 200)
 ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a.svg", fig_counter), plot = ttr_survival_plot_grid, width = 11, height = 8.5, dpi = 200)
 
-ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a_1.png", fig_counter), plot = ttr_surv_p1$plot, width = 11, height = 8.5, dpi = 200)
-ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a_1.svg", fig_counter), plot = ttr_surv_p1$plot, width = 11, height = 8.5, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a_1.png", fig_counter), plot = ttr_surv_p1, width = 11, height = 8.5, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a_1.svg", fig_counter), plot = ttr_surv_p1, width = 11, height = 8.5, dpi = 200)
 
-ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a_2.png", fig_counter), plot = ttr_surv_p2$plot, width = 11, height = 8.5, dpi = 200)
-ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a_2.svg", fig_counter), plot = ttr_surv_p2$plot, width = 11, height = 8.5, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a_2.png", fig_counter), plot = ttr_surv_p2, width = 11, height = 8.5, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a_2.svg", fig_counter), plot = ttr_surv_p2, width = 11, height = 8.5, dpi = 200)
 
-ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a_3.png", fig_counter), plot = ttr_surv_p3$plot, width = 11, height = 8.5, dpi = 200)
-ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a_3.svg", fig_counter), plot = ttr_surv_p3$plot, width = 11, height = 8.5, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a_3.png", fig_counter), plot = ttr_surv_p3, width = 11, height = 8.5, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a_3.svg", fig_counter), plot = ttr_surv_p3, width = 11, height = 8.5, dpi = 200)
 
-ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a_4.png", fig_counter), plot = ttr_surv_p4$plot, width = 11, height = 8.5, dpi = 200)
-ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a_4.svg", fig_counter), plot = ttr_surv_p4$plot, width = 11, height = 8.5, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a_4.png", fig_counter), plot = ttr_surv_p4, width = 11, height = 8.5, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_a_4.svg", fig_counter), plot = ttr_surv_p4, width = 11, height = 8.5, dpi = 200)
 
-ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_b.png", fig_counter), plot = surv_p5$plot, width = 9, height = 8, dpi = 200)
-ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_b.svg", fig_counter), plot = surv_p5$plot, width = 9, height = 8, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_b.png", fig_counter), plot = surv_p5, width = 9, height = 8, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_b.svg", fig_counter), plot = surv_p5, width = 9, height = 8, dpi = 200)
 
-ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_c.png", fig_counter), plot = ttr_surv_p5$plot, width = 9, height = 8, dpi = 200)
-ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_c.svg", fig_counter), plot = ttr_surv_p5$plot, width = 9, height = 8, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_c.png", fig_counter), plot = ttr_surv_p5, width = 9, height = 8, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_c.svg", fig_counter), plot = ttr_surv_p5, width = 9, height = 8, dpi = 200)
 
-ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_c_with_ci.png", fig_counter), plot = ttr_surv_p5$plot, width = 9, height = 8, dpi = 200)
-ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_c_with_ci.svg", fig_counter), plot = ttr_surv_p5$plot, width = 9, height = 8, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_c_with_ci.png", fig_counter), plot = ttr_surv_p5, width = 9, height = 8, dpi = 200)
+ggsave(sprintf("../../figures/elisa_plasma_proteomics/supp_figure_%s_subfigure_c_with_ci.svg", fig_counter), plot = ttr_surv_p5, width = 9, height = 8, dpi = 200)
 ```
 **Supplemental Figure `r fig_counter` `r fig_counter <- fig_counter + 1`: Survival and Time to Recurrence Analysis.** (**a**) Kaplan-Meyer plots showing demonstrating high concentration of ASAH1 and high concentration of SYNEMIN contributing to a higher probability of tumor recurrence occurring at a later date. (**b**) Kaplan-Meyer plots demonstrating the combination of both ASAH1 and SYNEMIN and their contribution of survival probability and time to recurrence.
 
