@@ -52,22 +52,31 @@
 <circle cx='198.41' cy='336.10' r='3.56' style='stroke-width: 0.71; stroke: none; fill: #F68B33;' />
 <circle cx='150.47' cy='310.01' r='3.56' style='stroke-width: 0.71; stroke: none; fill: #F68B33;' />
 <polyline points='396.31,162.25 94.58,378.28 ' style='stroke-width: 3.20; stroke: #F8766D; stroke-opacity: 0.80; stroke-linecap: butt;' />
+<polygon points='393.34,168.80 396.31,162.25 389.14,162.95 ' style='stroke-width: 3.20; stroke: #F8766D; stroke-opacity: 0.80; stroke-linecap: butt; fill: #F8766D; fill-opacity: 0.80;' />
 <polygon points='97.55,371.73 94.58,378.28 101.74,377.58 ' style='stroke-width: 3.20; stroke: #F8766D; stroke-opacity: 0.80; stroke-linecap: butt; fill: #F8766D; fill-opacity: 0.80;' />
 <polyline points='349.63,376.07 141.26,164.46 ' style='stroke-width: 3.20; stroke: #D89000; stroke-opacity: 0.80; stroke-linecap: butt;' />
+<polygon points='342.69,374.16 349.63,376.07 347.82,369.10 ' style='stroke-width: 3.20; stroke: #D89000; stroke-opacity: 0.80; stroke-linecap: butt; fill: #D89000; fill-opacity: 0.80;' />
 <polygon points='148.20,166.37 141.26,164.46 143.07,171.43 ' style='stroke-width: 3.20; stroke: #D89000; stroke-opacity: 0.80; stroke-linecap: butt; fill: #D89000; fill-opacity: 0.80;' />
 <polyline points='289.69,229.02 201.20,311.51 ' style='stroke-width: 3.20; stroke: #A3A500; stroke-opacity: 0.80; stroke-linecap: butt;' />
+<polygon points='287.58,235.90 289.69,229.02 282.67,230.64 ' style='stroke-width: 3.20; stroke: #A3A500; stroke-opacity: 0.80; stroke-linecap: butt; fill: #A3A500; fill-opacity: 0.80;' />
 <polygon points='203.31,304.63 201.20,311.51 208.22,309.89 ' style='stroke-width: 3.20; stroke: #A3A500; stroke-opacity: 0.80; stroke-linecap: butt; fill: #A3A500; fill-opacity: 0.80;' />
 <polyline points='301.87,409.88 189.01,130.65 ' style='stroke-width: 3.20; stroke: #39B600; stroke-opacity: 0.80; stroke-linecap: butt;' />
+<polygon points='296.20,405.45 301.87,409.88 302.87,402.75 ' style='stroke-width: 3.20; stroke: #39B600; stroke-opacity: 0.80; stroke-linecap: butt; fill: #39B600; fill-opacity: 0.80;' />
 <polygon points='194.69,135.08 189.01,130.65 188.01,137.78 ' style='stroke-width: 3.20; stroke: #39B600; stroke-opacity: 0.80; stroke-linecap: butt; fill: #39B600; fill-opacity: 0.80;' />
 <polyline points='233.86,151.70 257.03,388.83 ' style='stroke-width: 3.20; stroke: #00BF7D; stroke-opacity: 0.80; stroke-linecap: butt;' />
+<polygon points='238.05,157.56 233.86,151.70 230.89,158.26 ' style='stroke-width: 3.20; stroke: #00BF7D; stroke-opacity: 0.80; stroke-linecap: butt; fill: #00BF7D; fill-opacity: 0.80;' />
 <polygon points='252.84,382.97 257.03,388.83 260.00,382.27 ' style='stroke-width: 3.20; stroke: #00BF7D; stroke-opacity: 0.80; stroke-linecap: butt; fill: #00BF7D; fill-opacity: 0.80;' />
 <polyline points='277.28,70.85 213.61,469.68 ' style='stroke-width: 3.20; stroke: #00BFC4; stroke-opacity: 0.80; stroke-linecap: butt;' />
+<polygon points='279.85,77.58 277.28,70.85 272.74,76.44 ' style='stroke-width: 3.20; stroke: #00BFC4; stroke-opacity: 0.80; stroke-linecap: butt; fill: #00BFC4; fill-opacity: 0.80;' />
 <polygon points='211.04,462.95 213.61,469.68 218.15,464.09 ' style='stroke-width: 3.20; stroke: #00BFC4; stroke-opacity: 0.80; stroke-linecap: butt; fill: #00BFC4; fill-opacity: 0.80;' />
 <polyline points='197.43,216.00 293.46,324.53 ' style='stroke-width: 3.20; stroke: #00B0F6; stroke-opacity: 0.80; stroke-linecap: butt;' />
+<polygon points='204.26,218.29 197.43,216.00 198.87,223.06 ' style='stroke-width: 3.20; stroke: #00B0F6; stroke-opacity: 0.80; stroke-linecap: butt; fill: #00B0F6; fill-opacity: 0.80;' />
 <polygon points='286.63,322.24 293.46,324.53 292.02,317.47 ' style='stroke-width: 3.20; stroke: #00B0F6; stroke-opacity: 0.80; stroke-linecap: butt; fill: #00B0F6; fill-opacity: 0.80;' />
 <polyline points='292.48,204.43 198.41,336.10 ' style='stroke-width: 3.20; stroke: #E76BF3; stroke-opacity: 0.80; stroke-linecap: butt;' />
+<polygon points='291.79,211.59 292.48,204.43 285.93,207.41 ' style='stroke-width: 3.20; stroke: #E76BF3; stroke-opacity: 0.80; stroke-linecap: butt; fill: #E76BF3; fill-opacity: 0.80;' />
 <polygon points='199.10,328.94 198.41,336.10 204.96,333.12 ' style='stroke-width: 3.20; stroke: #E76BF3; stroke-opacity: 0.80; stroke-linecap: butt; fill: #E76BF3; fill-opacity: 0.80;' />
 <polyline points='340.42,230.52 150.47,310.01 ' style='stroke-width: 3.20; stroke: #FF62BC; stroke-opacity: 0.80; stroke-linecap: butt;' />
+<polygon points='336.06,236.25 340.42,230.52 333.28,229.61 ' style='stroke-width: 3.20; stroke: #FF62BC; stroke-opacity: 0.80; stroke-linecap: butt; fill: #FF62BC; fill-opacity: 0.80;' />
 <polygon points='154.83,304.28 150.47,310.01 157.61,310.92 ' style='stroke-width: 3.20; stroke: #FF62BC; stroke-opacity: 0.80; stroke-linecap: butt; fill: #FF62BC; fill-opacity: 0.80;' />
 </g>
 <g clip-path='url(#cpMC4wMHw2NDguMDB8MC4wMHw1NzYuMDA=)'>
@@ -111,24 +120,34 @@
 <text x='459.76' y='282.70' style='font-size: 16.00px; font-family: "Arimo";' textLength='77.82px' lengthAdjust='spacingAndGlyphs'>Patient ID</text>
 <text x='459.76' y='299.98' style='font-size: 16.00px; font-family: "Arimo";' textLength='78.99px' lengthAdjust='spacingAndGlyphs'>Trajectory</text>
 <line x1='461.48' y1='318.25' x2='475.31' y2='318.25' style='stroke-width: 3.20; stroke: #F8766D; stroke-opacity: 0.80; stroke-linecap: butt;' />
+<polygon points='467.72,314.65 461.48,318.25 467.72,321.85 ' style='stroke-width: 3.20; stroke: #F8766D; stroke-opacity: 0.80; stroke-linecap: butt; fill: #F8766D; fill-opacity: 0.80;' />
 <polygon points='469.07,321.85 475.31,318.25 469.07,314.65 ' style='stroke-width: 3.20; stroke: #F8766D; stroke-opacity: 0.80; stroke-linecap: butt; fill: #F8766D; fill-opacity: 0.80;' />
 <line x1='461.48' y1='335.53' x2='475.31' y2='335.53' style='stroke-width: 3.20; stroke: #D89000; stroke-opacity: 0.80; stroke-linecap: butt;' />
+<polygon points='467.72,331.93 461.48,335.53 467.72,339.13 ' style='stroke-width: 3.20; stroke: #D89000; stroke-opacity: 0.80; stroke-linecap: butt; fill: #D89000; fill-opacity: 0.80;' />
 <polygon points='469.07,339.13 475.31,335.53 469.07,331.93 ' style='stroke-width: 3.20; stroke: #D89000; stroke-opacity: 0.80; stroke-linecap: butt; fill: #D89000; fill-opacity: 0.80;' />
 <line x1='461.48' y1='352.81' x2='475.31' y2='352.81' style='stroke-width: 3.20; stroke: #A3A500; stroke-opacity: 0.80; stroke-linecap: butt;' />
+<polygon points='467.72,349.21 461.48,352.81 467.72,356.41 ' style='stroke-width: 3.20; stroke: #A3A500; stroke-opacity: 0.80; stroke-linecap: butt; fill: #A3A500; fill-opacity: 0.80;' />
 <polygon points='469.07,356.41 475.31,352.81 469.07,349.21 ' style='stroke-width: 3.20; stroke: #A3A500; stroke-opacity: 0.80; stroke-linecap: butt; fill: #A3A500; fill-opacity: 0.80;' />
 <line x1='461.48' y1='370.09' x2='475.31' y2='370.09' style='stroke-width: 3.20; stroke: #39B600; stroke-opacity: 0.80; stroke-linecap: butt;' />
+<polygon points='467.72,366.49 461.48,370.09 467.72,373.69 ' style='stroke-width: 3.20; stroke: #39B600; stroke-opacity: 0.80; stroke-linecap: butt; fill: #39B600; fill-opacity: 0.80;' />
 <polygon points='469.07,373.69 475.31,370.09 469.07,366.49 ' style='stroke-width: 3.20; stroke: #39B600; stroke-opacity: 0.80; stroke-linecap: butt; fill: #39B600; fill-opacity: 0.80;' />
 <line x1='461.48' y1='387.37' x2='475.31' y2='387.37' style='stroke-width: 3.20; stroke: #00BF7D; stroke-opacity: 0.80; stroke-linecap: butt;' />
+<polygon points='467.72,383.77 461.48,387.37 467.72,390.97 ' style='stroke-width: 3.20; stroke: #00BF7D; stroke-opacity: 0.80; stroke-linecap: butt; fill: #00BF7D; fill-opacity: 0.80;' />
 <polygon points='469.07,390.97 475.31,387.37 469.07,383.77 ' style='stroke-width: 3.20; stroke: #00BF7D; stroke-opacity: 0.80; stroke-linecap: butt; fill: #00BF7D; fill-opacity: 0.80;' />
 <line x1='513.78' y1='318.25' x2='527.61' y2='318.25' style='stroke-width: 3.20; stroke: #00BFC4; stroke-opacity: 0.80; stroke-linecap: butt;' />
+<polygon points='520.02,314.65 513.78,318.25 520.02,321.85 ' style='stroke-width: 3.20; stroke: #00BFC4; stroke-opacity: 0.80; stroke-linecap: butt; fill: #00BFC4; fill-opacity: 0.80;' />
 <polygon points='521.37,321.85 527.61,318.25 521.37,314.65 ' style='stroke-width: 3.20; stroke: #00BFC4; stroke-opacity: 0.80; stroke-linecap: butt; fill: #00BFC4; fill-opacity: 0.80;' />
 <line x1='513.78' y1='335.53' x2='527.61' y2='335.53' style='stroke-width: 3.20; stroke: #00B0F6; stroke-opacity: 0.80; stroke-linecap: butt;' />
+<polygon points='520.02,331.93 513.78,335.53 520.02,339.13 ' style='stroke-width: 3.20; stroke: #00B0F6; stroke-opacity: 0.80; stroke-linecap: butt; fill: #00B0F6; fill-opacity: 0.80;' />
 <polygon points='521.37,339.13 527.61,335.53 521.37,331.93 ' style='stroke-width: 3.20; stroke: #00B0F6; stroke-opacity: 0.80; stroke-linecap: butt; fill: #00B0F6; fill-opacity: 0.80;' />
 <line x1='513.78' y1='352.81' x2='527.61' y2='352.81' style='stroke-width: 3.20; stroke: #9590FF; stroke-opacity: 0.80; stroke-linecap: butt;' />
+<polygon points='520.02,349.21 513.78,352.81 520.02,356.41 ' style='stroke-width: 3.20; stroke: #9590FF; stroke-opacity: 0.80; stroke-linecap: butt; fill: #9590FF; fill-opacity: 0.80;' />
 <polygon points='521.37,356.41 527.61,352.81 521.37,349.21 ' style='stroke-width: 3.20; stroke: #9590FF; stroke-opacity: 0.80; stroke-linecap: butt; fill: #9590FF; fill-opacity: 0.80;' />
 <line x1='513.78' y1='370.09' x2='527.61' y2='370.09' style='stroke-width: 3.20; stroke: #E76BF3; stroke-opacity: 0.80; stroke-linecap: butt;' />
+<polygon points='520.02,366.49 513.78,370.09 520.02,373.69 ' style='stroke-width: 3.20; stroke: #E76BF3; stroke-opacity: 0.80; stroke-linecap: butt; fill: #E76BF3; fill-opacity: 0.80;' />
 <polygon points='521.37,373.69 527.61,370.09 521.37,366.49 ' style='stroke-width: 3.20; stroke: #E76BF3; stroke-opacity: 0.80; stroke-linecap: butt; fill: #E76BF3; fill-opacity: 0.80;' />
 <line x1='513.78' y1='387.37' x2='527.61' y2='387.37' style='stroke-width: 3.20; stroke: #FF62BC; stroke-opacity: 0.80; stroke-linecap: butt;' />
+<polygon points='520.02,383.77 513.78,387.37 520.02,390.97 ' style='stroke-width: 3.20; stroke: #FF62BC; stroke-opacity: 0.80; stroke-linecap: butt; fill: #FF62BC; fill-opacity: 0.80;' />
 <polygon points='521.37,390.97 527.61,387.37 521.37,383.77 ' style='stroke-width: 3.20; stroke: #FF62BC; stroke-opacity: 0.80; stroke-linecap: butt; fill: #FF62BC; fill-opacity: 0.80;' />
 <text x='485.01' y='323.72' style='font-size: 15.00px; font-family: "Arimo";' textLength='9.54px' lengthAdjust='spacingAndGlyphs'>6</text>
 <text x='485.01' y='341.00' style='font-size: 15.00px; font-family: "Arimo";' textLength='19.08px' lengthAdjust='spacingAndGlyphs'>10</text>

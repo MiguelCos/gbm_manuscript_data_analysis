@@ -52,6 +52,7 @@
 <circle cx='253.86' cy='358.71' r='3.56' style='stroke-width: 0.71; stroke: none; fill: #F68B33;' />
 <circle cx='188.59' cy='330.83' r='3.56' style='stroke-width: 0.71; stroke: none; fill: #F68B33;' />
 <polyline points='398.31,263.42 246.80,333.68 ' style='stroke-width: 4.27; stroke: #F8766D; stroke-opacity: 0.80; stroke-linecap: butt;' />
+<polygon points='394.17,269.31 398.31,263.42 391.14,262.78 ' style='stroke-width: 4.27; stroke: #F8766D; stroke-opacity: 0.80; stroke-linecap: butt; fill: #F8766D; fill-opacity: 0.80;' />
 <polygon points='250.95,327.79 246.80,333.68 253.98,334.32 ' style='stroke-width: 4.27; stroke: #F8766D; stroke-opacity: 0.80; stroke-linecap: butt; fill: #F8766D; fill-opacity: 0.80;' />
 </g>
 <g clip-path='url(#cpMC4wMHw3OTIuMDB8MC4wMHw2MTIuMDA=)'>
@@ -94,6 +95,7 @@
 <rect x='598.28' y='310.50' width='112.54' height='80.37' style='stroke-width: 1.07; stroke: none; fill: #FFFFFF;' />
 <text x='603.76' y='329.31' style='font-size: 16.00px; font-family: "Arimo";' textLength='78.99px' lengthAdjust='spacingAndGlyphs'>Trajectory</text>
 <line x1='605.48' y1='362.17' x2='619.31' y2='362.17' style='stroke-width: 4.27; stroke: #F8766D; stroke-opacity: 0.80; stroke-linecap: butt;' />
+<polygon points='611.72,358.57 605.48,362.17 611.72,365.77 ' style='stroke-width: 4.27; stroke: #F8766D; stroke-opacity: 0.80; stroke-linecap: butt; fill: #F8766D; fill-opacity: 0.80;' />
 <polygon points='613.07,365.77 619.31,362.17 613.07,358.57 ' style='stroke-width: 4.27; stroke: #F8766D; stroke-opacity: 0.80; stroke-linecap: butt; fill: #F8766D; fill-opacity: 0.80;' />
 <text x='629.01' y='351.44' style='font-size: 15.00px; font-family: "Arimo";' textLength='76.33px' lengthAdjust='spacingAndGlyphs'>Avg. iGBM</text>
 <text x='629.01' y='367.64' style='font-size: 15.00px; font-family: "Arimo";' textLength='60.83px' lengthAdjust='spacingAndGlyphs'>to rGBM</text>
