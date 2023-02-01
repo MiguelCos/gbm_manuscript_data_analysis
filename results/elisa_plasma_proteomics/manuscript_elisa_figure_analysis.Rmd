@@ -83,6 +83,46 @@ installIfNeeded("future")
 
 <!-- # Helper Functions -->
 ```{r message=FALSE, warning=FALSE, include=FALSE}
+cs <- function(.x) {    # center/scale vector
+  print(.x)
+  out <- .x - mean(.x)  # center
+  out / sd(out)         # scale
+}
+
+median_centre_data <- function(train_df){
+  values_to = "measure_col"
+  measure_col="measure_col"
+  train_df %>%
+  tibble::rowid_to_column(var = "sample_id_col") %>%
+  tidyr::pivot_longer(cols = c(ASAH1, MMP.9, SYNEMIN, GPNMB), names_to = "feature_id_col", values_to = "measure_col") ->
+  train_long
+
+  normalized_df = train_long %>% group_by(sample_id_col) %>% 
+      mutate(median_run = median(measure_col, na.rm = TRUE)) %>% 
+      ungroup()
+  old_measure_col = paste("preNorm", measure_col, sep = "_")
+  normalized_df = normalized_df %>% mutate(median_global = median(!!(sym(measure_col)), 
+    na.rm = TRUE), `:=`(!!(old_measure_col), !!(sym(measure_col)))) %>% 
+    mutate(diff_norm = median_global - median_run) %>% mutate(`:=`(!!(sym(measure_col)), 
+    !!(sym(measure_col)) + diff_norm))
+    
+  normalized_df = switch("default", all = normalized_df, 
+      default = normalized_df, minimal = normalized_df %>% 
+        dplyr::select(c(sample_id_col, feature_id_col, 
+          measure_col, old_measure_col)))
+  
+  # ggplot(normalized_df, aes(x=as.factor(sample_id_col), y=measure_col, col=sample_id_col)) +
+  #   geom_boxplot()
+  
+  normalized_df %>%
+    dplyr::select(sample_id_col, class, feature_id_col, measure_col) %>%
+    tidyr::pivot_wider(id_cols = c("sample_id_col", "class"), names_from = "feature_id_col", values_from = "measure_col") %>%
+    tibble::column_to_rownames("sample_id_col") -> train_df
+  
+  return(train_df)
+}
+
+
 #' @title Master Trainer and Prediction
 #' @description Top Function to perform predictions for testing logistic regression, logistic regression + elastic regularization, random forest and k-Nearest Neightbours
 #' 
@@ -248,7 +288,7 @@ get_ratio_data <- function(data_long2){
     dplyr::group_map(function(.d, ...){
       .d <- as.data.table(.d)
       .d %>% 
-        dplyr::group_by(gene, Number.x, patient_state, `Age at surgery (years)`, Sex, `Tumor localization`, `Type of resection`, `MGMT promotor methylation`, `p53 accumulation`, `Ki67-Li`, `EGFR vIII`, Treatment, `Time-to-reccurence (days)`, `Latency (days)`) %>% 
+        dplyr::group_by(gene, Number.x, patient_state) %>% 
         dplyr::summarise(agg_lab_id = paste(LAB_ID, collapse=";"),
                          agg_collection_type = paste(collection_type, collapse = ";"), .groups = "keep") -> tmp
       # print(.d)
@@ -282,7 +322,7 @@ get_ratio_data <- function(data_long2){
     dplyr::group_map(function(.d, ...){
       .d <- as.data.table(.d)
       .d %>% 
-        dplyr::group_by(gene, Number.x, patient_state, `Age at surgery (years)`, Sex, `Tumor localization`, `Type of resection`, `MGMT promotor methylation`, `p53 accumulation`, `Ki67-Li`, `EGFR vIII`, Treatment, `Time-to-reccurence (days)`, `Latency (days)`) %>% 
+        dplyr::group_by(gene, Number.x, patient_state) %>% 
         dplyr::summarise(agg_lab_id = paste(LAB_ID, collapse=";"),
                          agg_collection_type = paste(collection_type, collapse = ";"), .groups = "keep") -> tmp
       # print(.d)
@@ -293,14 +333,14 @@ get_ratio_data <- function(data_long2){
       } else if (nrow(.d)==2) {
         .d_initial <- .d[collection_type=="E1"]
         .d_second <- .d[collection_type=="E2"]
-        tmp$ratio <- .d_initial$conc / .d_second$conc
+        tmp$ratio <- .d_second$conc / .d_initial$conc
       } else {
         tmp$ratio <- NA #.d$conc
       }
       return(tmp)
     }, .keep = TRUE) %>%
     rbindlist() %>%
-    dplyr::mutate(sample_comparison = plyr::mapvalues(patient_state, from=c(0, 1, 2), to=c("ctrl", "rGBMoveriGBM", "pre-surgery/post-surgery"))) %>%
+    dplyr::mutate(sample_comparison = plyr::mapvalues(patient_state, from=c(0, 1, 2), to=c("ctrl", "rGBMoveriGBM", "post-surgery/pre-surgery"))) %>%
     dplyr::filter(sample_comparison=="rGBMoveriGBM" ) %>%
     dplyr::filter(grepl(";", agg_lab_id)) %>%
     dplyr::mutate(log2_conc = log2(ratio)) %>%
@@ -322,12 +362,10 @@ get_ratio_data <- function(data_long2){
   
   
   pdata <- rbindlist(list(pdata, pdata2))
-  
-  pdata <- merge(pdata, meta_dt, by="Number.x")
-  
+
   ### Pivot Table to wide
   pdata %>%
-    dplyr::select(Number.x, class, ASAH1, SYNEMIN, GPNMB, `MMP-9`, `Time-to-reccurence (days)`, `Latency (days)`, `Type of resection`) -> data_wide
+    dplyr::select(Number.x, class, ASAH1, SYNEMIN, GPNMB, `MMP-9`) -> data_wide
   
   ## Remove non-paired patients
   data_wide %>%
@@ -437,9 +475,11 @@ splsda_loocv_perf <- function(ratio_data, patient_ids, unique_random_train_patie
     train_df <- train_test$train_df
     test_df <- train_test$test_df
     # Perform splsda
-    MyResult.splsda <- mixOmics::splsda(train_df[, c(-1, -2, -7, -8, -9, -10)], train_df$class, keepX = c(4,4)) 
+    # MyResult.splsda <- mixOmics::splsda(train_df[, c(-1, -2, -7, -8, -9, -10)], train_df$class, keepX = c(4,4)) 
+    MyResult.splsda <- mixOmics::splsda(train_df[, c(-1, -2)], train_df$class, keepX = c(4,4)) 
     # Make prediction
-    pred_test <- predict(MyResult.splsda, test_df[, c(-1, -2, -7, -8, -9, -10)], test_df$class)
+    # pred_test <- predict(MyResult.splsda, test_df[, c(-1, -2, -7, -8, -9, -10)], test_df$class)
+    pred_test <- predict(MyResult.splsda, test_df[, c(-1, -2)], test_df$class)
     # evaluate the prediction accuracy for the first two components
     predict.comp2 <- pred_test$class$mahalanobis.dist[,2]
     # compute confusion matrix
@@ -457,6 +497,22 @@ splsda_loocv_perf <- function(ratio_data, patient_ids, unique_random_train_patie
   mean(acc_vec==1)
 }
 
+splsda <- function(train_df, test_df){
+    
+    # Perform splsda
+    MyResult.splsda <- mixOmics::splsda(train_df, train_df$class, keepX = c(4,4)) 
+    # Make prediction
+    pred_test <- predict(MyResult.splsda, test_df, test_df$class)
+    # evaluate the prediction accuracy for the first two components
+    predict.comp2 <- pred_test$class$mahalanobis.dist[,2]
+    # compute confusion matrix
+    conf_mat <- table(factor(predict.comp2, levels = levels(train_df$class)), test_df$class)
+    # print(conf_mat)
+    # compute accuracy
+    acc <- (conf_mat[1,1] + conf_mat[2,2])/(conf_mat[1,1] + conf_mat[2,2] + conf_mat[1,2] + conf_mat[2,1])
+    
+    return(list(model=MyResult.splsda, acc=acc))
+}
 ```
 
 <!-- # Data File Paths -->
@@ -471,8 +527,8 @@ elisa_data_file <- "../../data/elisa_plasma_proteomics/ELISA_data.csv"
 clinical_data <- fread(patient_clinical_data)
 patient_longitudinal_mapping_data <- fread(patient_longitudinal_mapping_file)
 
-patient_meta_data <- merge(clinical_data, patient_longitudinal_mapping_data, by.x="LAB_ID", by.y = "Overall_Lab_ID", all = TRUE)
-patient_meta_data[ LAB_ID != LAB_ID.y]$LAB_ID <-  patient_meta_data[ LAB_ID != LAB_ID.y]$LAB_ID.y
+patient_meta_data <- merge(clinical_data, patient_longitudinal_mapping_data, by.x="LAB_ID", by.y = "LAB_ID", all = TRUE)
+# patient_meta_data[ LAB_ID != LAB_ID.y]$LAB_ID <-  patient_meta_data[ LAB_ID != LAB_ID.y]$LAB_ID.y
 
 elisa_data <- fread(elisa_data_file)
 
@@ -497,6 +553,8 @@ patient_meta_data %>%
   dplyr::add_count() %>%
   unique() %>%
   dplyr::ungroup()-> meta_dt
+
+patient_id_meta <- unique(data_long[, .(LAB_ID, Number.x, collection_type, manifestation_type, patient_state, `Time-to-reccurence (days)`)])
 ```
 
 \pagebreak
@@ -1366,7 +1424,7 @@ data_long %>%
   dplyr::group_map(function(.d, ...){
     .d <- as.data.table(.d)
     .d %>% 
-      dplyr::group_by(gene, Number.x, patient_state, `Age at surgery (years)`, Sex, `Tumor localization`, `Type of resection`, `MGMT promotor methylation`, `p53 accumulation`, `Ki67-Li`, `EGFR vIII`, Treatment, `Time-to-reccurence (days)`, `Latency (days)`) %>% 
+      dplyr::group_by(gene, Number.x, patient_state) %>% 
       dplyr::summarise(agg_lab_id = paste(LAB_ID, collapse=";"),
                        agg_collection_type = paste(collection_type, collapse = ";"), .groups = "keep") -> tmp
     # print(.d)
@@ -1400,7 +1458,7 @@ data_long %>%
   dplyr::group_map(function(.d, ...){
     .d <- as.data.table(.d)
     .d %>% 
-      dplyr::group_by(gene, Number.x, patient_state, `Age at surgery (years)`, Sex, `Tumor localization`, `Type of resection`, `MGMT promotor methylation`, `p53 accumulation`, `Ki67-Li`, `EGFR vIII`, Treatment, `Time-to-reccurence (days)`, `Latency (days)`) %>% 
+      dplyr::group_by(gene, Number.x, patient_state) %>% 
       dplyr::summarise(agg_lab_id = paste(LAB_ID, collapse=";"),
                        agg_collection_type = paste(collection_type, collapse = ";"), .groups = "keep") -> tmp
     # print(.d)
@@ -1576,10 +1634,14 @@ p_pa_pb_ratio_scatter <- ggpubr::ggarrange(p_pa_pb_ratio_scatter1, p_pa_pb_ratio
 
 ## sPLS-DA of Ratios ----
 
+org_class <- train_df$class
+train_df$class <- sample(train_df$class)
+
 MyResult.splsda <- mixOmics::splsda(train_df[, c(-1, -2, -7, -8, -9, -10)], train_df$class, keepX = c(4,4)) 
+MyResult.splsda <- mixOmics::splsda(train_df[, c(-1)], train_df$class, keepX = c(4,4))
 background <- background.predict(MyResult.splsda, comp.predicted=2, dist = "max.dist") 
 
-plsda_data <- cbind( patient_id=na.omit(data_wide)  %>% dplyr::pull(Number.x), class=train_df$class, as.data.frame(MyResult.splsda$variates$X))
+plsda_data <- cbind( patient_id=na.omit(data_wide %>% dplyr::filter(Number.x!=32))  %>% dplyr::pull(Number.x), class=train_df$class, as.data.frame(MyResult.splsda$variates$X))
 plsda_data$patient_id <- as.factor(plsda_data$patient_id)
 plsda_data %>%
   dplyr::arrange(class) -> plsda_data
@@ -1619,10 +1681,12 @@ p <- ggplot() +
   scale_color_manual(values=c( "#388ECC", "#F68B33"), labels=c(expression(paste(frac('initial GBM', 'recurrent GBM'), " Ratio")),
                                                                expression(paste(frac('recurrent GBM', 'initial GBM'), " Ratio")))
   ) +
-  ggnewscale::new_scale_color() +
-  geom_path(data=average_comp, aes(x=avg_comp1, y=avg_comp2, group = patient_id, col="Avg. iGBM\nto rGBM\nTrajectory"),
-            arrow = arrow(type = "closed", ends='both',
-                          length=unit(0.1, "inches")), size=2, alpha=0.8) +
+  # ggnewscale::new_scale_color() +
+  # ggrepel::geom_label_repel(data=merge(plsda_data %>% dplyr::mutate(patient_id = as.numeric(as.character(patient_id))), unique(data_long[manifestation_type!='' & patient_state==1 & `Time-to-reccurence (days)`!='', .(Number.x, `Time-to-reccurence (days)`)]), by.x='patient_id', by.y="Number.x", all.x=T), aes(x=comp1, y=comp2, col=`Time-to-reccurence (days)`, label=paste(patient_id, `Time-to-reccurence (days)`, sep=": "))) +
+  # ggnewscale::new_scale_color() +
+  # geom_path(data=average_comp, aes(x=avg_comp1, y=avg_comp2, group = patient_id, col="Avg. iGBM\nto rGBM\nTrajectory"),
+  #           arrow = arrow(type = "closed", ends='both',
+  #                         length=unit(0.1, "inches")), size=2, alpha=0.8) +
   labs(x=sprintf("X-variate 1: %s%% explained variance", round(MyResult.splsda$prop_expl_var$X[1]*100)), y =sprintf("X-variate 2: %s%% explained variance", round(MyResult.splsda$prop_expl_var$X[2]*100))) +
   theme_classic() +
   theme(plot.title = element_text(hjust = 0.5, size=17),
@@ -1633,10 +1697,87 @@ p <- ggplot() +
         legend.text = element_text(size=15),
         legend.position = "right", legend.box="vertical",) +
   guides(shape="none",
+         colour_new_new=guide_legend(title="Class", ncol=1, byrow = T),
          colour_new=guide_legend(title="Class", ncol=1, byrow = T),
-         col=guide_legend(title="Trajectory", ncol=1))
+         col=guide_legend(title="Class", ncol=1, byrow = T))
+  # guides(shape="none",
+  #        colour_new_new=guide_legend(title="Class", ncol=1, byrow = T),
+  #        colour_new='none',
+  #        col=guide_legend(title="Trajectory", ncol=1))
 
 splsda_ratio_avg_traj_fig <- p
+
+background %>%
+  dplyr::filter(Var2 < 1.59058 & Var2 > -1.56044 & Var1 > -2.5462 & Var1 < 2.36565) -> background_line
+
+lm_eq <- lm(Var2 ~ Var1, data=background_line)
+coef(lm_eq)
+
+plsda_data %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(new_x = (comp1 + -1/coef(lm_eq)[2]*comp2  - (-1/coef(lm_eq)[2]*(-coef(lm_eq)[1])))/(1+(-1/coef(lm_eq)[2])^2),
+                new_y = (-1/coef(lm_eq)[2]*comp1 + ((-1/coef(lm_eq)[2])^2)*comp2  + (-coef(lm_eq)[1]))/(1+(-1/coef(lm_eq)[2])^2)) -> plsda_data_proj
+
+ggplot() +
+  # geom_point(data=background_line, aes(x=Var1, y=Var2)) +
+  geom_abline(slope = coef(lm_eq)[2], intercept = coef(lm_eq)[1]) +
+  geom_abline(slope = -1/coef(lm_eq)[2], intercept = -coef(lm_eq)[1]) +
+  geom_point(data=plsda_data_proj, aes(x=new_x, y=new_y, col=class)) 
+
+ggplot() +
+  geom_polygon(data = background,aes(x=Var1, y=Var2,
+                                     fill = col), inherit.aes = FALSE, show.legend=FALSE, alpha=0.2) +
+  scale_fill_manual(values=c("#388ECC", "#F68B33")) +
+  # geom_point(data=plsda_data[patient_id=="Ctrl"], aes(x=comp1, y=comp2, shape=class), col="black", size=3) +
+  # geom_point(data=plsda_data[patient_id!="Ctrl"], aes(x=comp1, y=comp2, col=class, shape=class), size=3) +
+  geom_point(data=plsda_data, aes(x=comp1, y=comp2, col=class, shape=class), size=3, alpha=0.45) +
+  scale_shape_manual(values=c(15, 16, 17)) +
+  scale_color_manual(values=c( "#388ECC", "#F68B33"), labels=c(expression(paste(frac('initial GBM', 'recurrent GBM'), " Ratio")),
+                                                               expression(paste(frac('recurrent GBM', 'initial GBM'), " Ratio")))
+  ) +
+  # ggnewscale::new_scale_color() +
+  # ggrepel::geom_label_repel(data=merge(plsda_data %>% dplyr::mutate(patient_id = as.numeric(as.character(patient_id))), unique(data_long[manifestation_type!='' & patient_state==1 & `Time-to-reccurence (days)`!='', .(Number.x, `Time-to-reccurence (days)`)]), by.x='patient_id', by.y="Number.x", all.x=T), aes(x=comp1, y=comp2, col=`Time-to-reccurence (days)`, label=`Time-to-reccurence (days)`)) +
+  ggnewscale::new_scale_color() +
+  ggnewscale::new_scale('shape') +
+  # geom_path(data=average_comp, aes(x=avg_comp1, y=avg_comp2, group = patient_id, col="Avg. iGBM\nto rGBM\nTrajectory"),
+  #           arrow = arrow(type = "closed", ends='both',
+  #                         length=unit(0.1, "inches")), size=2, alpha=0.8) +
+  geom_abline(slope = -1/coef(lm_eq)[2], intercept = -coef(lm_eq)[1]) +
+  geom_point(data=plsda_data_proj, aes(x=new_x, y=new_y, col=class, shape=class), size=3)  +
+  scale_shape_manual(values=c(15, 16, 17)) +
+  scale_color_manual(values=c( "#388ECC", "#F68B33"), labels=c(expression(paste(frac('initial GBM', 'recurrent GBM'), " Ratio")),
+                                                               expression(paste(frac('recurrent GBM', 'initial GBM'), " Ratio")))
+  ) +
+  labs(x=sprintf("X-variate 1: %s%% explained variance", round(MyResult.splsda$prop_expl_var$X[1]*100)), y =sprintf("X-variate 2: %s%% explained variance", round(MyResult.splsda$prop_expl_var$X[2]*100))) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size=17),
+        axis.title = element_text(size = 17),
+        axis.text = element_text(size=16),
+        strip.text = element_text(size=16),
+        legend.title = element_text(size=16),
+        legend.text = element_text(size=15),
+        legend.position = "right", legend.box="vertical",) +
+  guides(shape="none",
+         shape_new="none",
+         colour_new="none",
+         col=guide_legend(title="Class", ncol=1))
+
+ggplot() +
+  geom_point(data=merge(plsda_data_proj %>% dplyr::filter(class=='rGBM') %>% dplyr::mutate(patient_id = as.numeric(as.character(patient_id))), unique(data_long[manifestation_type!='' & patient_state==1 & `Time-to-reccurence (days)`!='', .(Number.x, `Time-to-reccurence (days)`)]), by.x='patient_id', by.y="Number.x", all.x=T), aes(x=class, y=-new_x, col=`Time-to-reccurence (days)`)) +
+  ggrepel::geom_label_repel(data=merge(plsda_data_proj %>% dplyr::filter(class=='rGBM') %>% dplyr::mutate(patient_id = as.numeric(as.character(patient_id))), unique(data_long[manifestation_type!='' & patient_state==1 & `Time-to-reccurence (days)`!='', .(Number.x, `Time-to-reccurence (days)`)]), by.x='patient_id', by.y="Number.x", all.x=T), aes(x=class, y=-new_x, col=`Time-to-reccurence (days)`, label=`Time-to-reccurence (days)`)) +
+  labs(y="Projected X-variate 1", x=NULL) +
+  scale_x_discrete(labels=c(expression(paste(frac('recurrent GBM', 'initial GBM'), " Ratio")))) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size=17),
+        axis.title = element_text(size = 17),
+        axis.text = element_text(size=16),
+        strip.text = element_text(size=16),
+        legend.title = element_text(size=16),
+        legend.text = element_text(size=15),
+        legend.position = "right", legend.box="vertical",) +
+  guides(col='none')
+
+
 
 # ggsave("../../figures/elisa_plasma_proteomics/elisa_supp_figure3_subfigure_b.png", plot = splsda_ratio_avg_traj_fig, width = 11, height = 8.5, dpi = 200)
 # ggsave("../../figures/elisa_plasma_proteomics/elisa_supp_figure3_subfigure_b.svg", plot = splsda_ratio_avg_traj_fig, width = 11, height = 8.5, dpi = 200)
@@ -1770,14 +1911,18 @@ train_test <- get_train_test_for_loocv(ratio_data, test_patient_id=NULL, unique_
 train_df <- train_test$train_df
 test_df <- train_test$test_df
 test_patients <- test_df$Number.x
+train_df <- rbindlist(list(train_df, test_df))
 
 ## sPLS-DA of Ratios ----
 message("Perform sPLS-DA")
 MyResult.splsda <- mixOmics::splsda(train_df[, c(-1, -2, -7, -8, -9, -10)], train_df$class, keepX = c(4,4)) 
+MyResult.splsda <- mixOmics::splsda(train_df[, c(-1, -2)], train_df$class, keepX = c(4,4)) 
 
 pred_test <- predict(MyResult.splsda, test_df[, c(-1, -2, -7, -8, -9, -10)], test_df$class)
+pred_test <- predict(MyResult.splsda, test_df[, c(-1, -2)], test_df$class)
 message("Perform background predictions")
 background <- background.predict(MyResult.splsda, comp.predicted=2, dist = "max.dist", xlim = c(min(c(MyResult.splsda$variates$X, pred_test$variates)), max(c(MyResult.splsda$variates$X, pred_test$variates))), ylim = c(min(c(MyResult.splsda$variates$X, pred_test$variates)), max(c(MyResult.splsda$variates$X, pred_test$variates))))
+background <- background.predict(MyResult.splsda, comp.predicted=2, dist = "max.dist", xlim = c(min(c(MyResult.splsda$variates$X)), max(c(MyResult.splsda$variates$X))), ylim = c(min(c(MyResult.splsda$variates$X)), max(c(MyResult.splsda$variates$X))))
 message("Prepare data for plotting")
 plsda_data <- cbind( patient_id=train_df  %>% dplyr::pull(Number.x), class=train_df$class, as.data.frame(MyResult.splsda$variates$X))
 plsda_data$patient_id <- as.factor(plsda_data$patient_id)
@@ -1820,13 +1965,15 @@ p <- ggplot() +
   scale_color_manual(values=c( "#388ECC", "#F68B33"), labels=c(expression(paste(frac('initial GBM', 'recurrent GBM'), " Ratio")),
                                                                expression(paste(frac('recurrent GBM', 'initial GBM'), " Ratio")))
   ) +
+  # ggnewscale::new_scale_color() +
+  # geom_path(data=average_comp, aes(x=avg_comp1, y=avg_comp2, group = patient_id, col="Avg. iGBM\nto rGBM\nTrajectory"),
+            # arrow = arrow(type = "closed", ends='both',
+                          # length=unit(0.1, "inches")), size=2, alpha=0.8) +
+  # ggnewscale::new_scale_color() +
+  # geom_point(data=data.frame(x=pred_test$variates[,1], y=pred_test$variates[,2]), aes(x=x, y=y, col="black"), size=3, shape=3) +
+  # scale_color_manual(values=c( "black"), labels=c(expression(paste(frac('recurrent GBM', 'initial GBM'), " Ratio")))) +
   ggnewscale::new_scale_color() +
-  geom_path(data=average_comp, aes(x=avg_comp1, y=avg_comp2, group = patient_id, col="Avg. iGBM\nto rGBM\nTrajectory"),
-            arrow = arrow(type = "closed", ends='both',
-                          length=unit(0.1, "inches")), size=2, alpha=0.8) +
-  ggnewscale::new_scale_color() +
-  geom_point(data=data.frame(x=pred_test$variates[,1], y=pred_test$variates[,2]), aes(x=x, y=y, col="black"), size=3, shape=3) +
-  scale_color_manual(values=c( "black"), labels=c(expression(paste(frac('recurrent GBM', 'initial GBM'), " Ratio")))) +
+  ggrepel::geom_label_repel(data=merge(plsda_data %>% dplyr::mutate(patient_id = as.numeric(as.character(patient_id))), unique(data_long[manifestation_type!='' & patient_state==1 & `Time-to-reccurence (days)`!='', .(Number.x, `Time-to-reccurence (days)`)]), by.x='patient_id', by.y="Number.x", all.x=T), aes(x=comp1, y=comp2, col=`Time-to-reccurence (days)`, label=`Time-to-reccurence (days)`)) +
   labs(x=sprintf("X-variate 1: %s%% explained variance", round(MyResult.splsda$prop_expl_var$X[1]*100)), y =sprintf("X-variate 2: %s%% explained variance", round(MyResult.splsda$prop_expl_var$X[2]*100))) +
   theme_classic() +
   theme(plot.title = element_text(hjust = 0.5, size=17),
@@ -1836,10 +1983,14 @@ p <- ggplot() +
         legend.title = element_text(size=16),
         legend.text = element_text(size=15),
         legend.position = "right", legend.box="vertical",) +
-  guides(shape="none",
+   guides(shape="none",
          colour_new_new=guide_legend(title="Class", ncol=1, byrow = T),
-         colour_new=guide_legend(title="Trajectory", ncol=1, byrow = T),
-         col=guide_legend(title="Prediction on\nHeld Out Patients", ncol=1))
+         colour_new=guide_legend(title="Class", ncol=1, byrow = T),
+         col='none')
+  # guides(shape="none",
+  #        colour_new_new=guide_legend(title="Class", ncol=1, byrow = T),
+  #        colour_new=guide_legend(title="Trajectory", ncol=1, byrow = T),
+  #        col=guide_legend(title="Prediction on\nHeld Out Patients", ncol=1))
 
 splsda_better_ratio_avg_traj_fig <- p
 splsda_better_ratio_avg_traj_fig
@@ -1861,6 +2012,10 @@ Lets compare to see if it makes a difference whether we use all patients for bot
 ```{r echo=FALSE, fig.height=8.5, fig.width=11, message=FALSE, warning=FALSE}
 # Get ratio data
 ratio_data <- get_ratio_data(data_long2)
+ratio_data <- data_wide
+colnames(ratio_data) <- make.names(colnames(ratio_data))
+ratio_data$class <- factor(ratio_data$class, levels=c("iGBM", "rGBM"))
+ratio_data <- ratio_data[Number.x!=32]
 # Get unique set of patient ids
 patient_ids <- unique(ratio_data$Number.x)
 
@@ -1884,10 +2039,10 @@ df_plot <- rbind(data.frame(method="Unique Patient Class Split", mean_acc=mean_a
 df_plot$method <- factor(df_plot$method, levels = c("All Patients per Class", "Unique Patient Class Split"))
 
 ggplot(df_plot, aes(x=mean_acc, fill=method)) +
-  geom_histogram(binwidth = 0.15, colour = "black") +
+  geom_histogram(binwidth = 0.05, colour = "black") +
   scale_x_continuous(breaks = seq(0, 1, by = 0.2)) +
   scale_fill_brewer(palette = "Dark2") +
-  stat_bin(binwidth = 0.15, aes(label=..count..), vjust=-0.5, geom = "text") +
+  stat_bin(binwidth = 0.05, aes(label=..count..), vjust=-0.5, geom = "text") +
   facet_wrap(~method) +
   labs(x="Mean Accuracy (LOOCV)", y="Count") +
   ggtitle("Mean Accuracy of LOOCV for 100 Repeats") +
@@ -1929,6 +2084,7 @@ train_df <- data_wide
 train_df <- na.omit(train_df)  %>% dplyr::select(-Number.x, -n)
 colnames(train_df) <- make.names(colnames(train_df))
 train_df <- as.data.frame(train_df)
+train_df <- median_centre_data(train_df)
 pred_obj_1.1 <- run_predictions(train_df)
 
 ## ROC Figure 
@@ -1971,6 +2127,7 @@ train_df <- data_wide
 train_df <- na.omit(train_df)  %>% dplyr::select(-Number.x, -n)
 colnames(train_df) <- make.names(colnames(train_df))
 train_df <- as.data.frame(train_df)
+train_df <- median_centre_data(train_df)
 pred_obj_1.2 <- run_predictions(train_df)
 
 ## ROC Figure 
@@ -2013,6 +2170,7 @@ train_df <- data_wide
 train_df <- na.omit(train_df)  %>% dplyr::select(-Number.x, -n)
 colnames(train_df) <- make.names(colnames(train_df))
 train_df <- as.data.frame(train_df)
+train_df <- median_centre_data(train_df)
 pred_obj_1.5 <- run_predictions(train_df, pred_col_prob = "rGBM")
 
 ## ROC Figure 
@@ -2036,20 +2194,48 @@ pred_obj_1.5$roc_data %>%
   dplyr::mutate(obs=plyr::mapvalues(obs, from=c("iGBM", "rGBM"), to=c("ctrl", "GBM"))) -> tmp_pred_obj_1.5_roc_data
 
 # iGBM vs rGBM ratio ----
-data_long %>% 
-  dplyr::mutate(conc = conc+1) %>% # Add one to avoid cases of 0 division
+
+## Median Centre data before computing ratios
+
+data_long[patient_state==1] %>%
+  dplyr::group_by(gene, Number.x) %>%
+  dplyr::add_count() %>%
+  dplyr::filter(n==2) %>% 
+  dplyr::ungroup() -> tmp_select
+
+tmp_select %>%
+  dplyr::select(gene, Number.x, conc, class=manifestation_type) %>%
+  dplyr::mutate(conc = log2(conc+1)) -> tmp
+tmp %>%
+  tidyr::pivot_wider(id_cols = c(Number.x, class), names_from = gene, values_from = conc ) -> tmp
+colnames(tmp) <- make.names(colnames(tmp))
+tmp <- na.omit(tmp)
+
+tmp_df_proteins <- median_centre_data(tmp[, c(2:6)])
+tmp_median_centred <- cbind(tmp[, 1], tmp_df_proteins) 
+
+tmp_median_centred %>%
+  dplyr::rename(manifestation_type=class, `MMP-9`=MMP.9) %>%
+  tidyr::pivot_longer(cols = c(ASAH1, `MMP-9`, SYNEMIN, GPNMB), names_to = "gene", values_to = "conc") -> tmp_median_centred
+
+data_long_tmp <- merge(tmp_select[, c("Number.x", "gene", "patient_state", "LAB_ID", "collection_type", "manifestation_type")], tmp_median_centred, by=c("Number.x", "manifestation_type", "gene"), all.y=T)
+
+ggplot(data_long_tmp, aes(x=as.factor(Number.x), y=conc, col=Number.x)) +
+    geom_boxplot()
+
+data_long_tmp %>% 
   dplyr::group_by(gene, Number.x) %>%
   dplyr::group_map(function(.d, ...){
     .d <- as.data.table(.d)
     .d %>% 
-      dplyr::group_by(gene, Number.x, patient_state, `Age at surgery (years)`, Sex, `Tumor localization`, `Type of resection`, `MGMT promotor methylation`, `p53 accumulation`, `Ki67-Li`, `EGFR vIII`, Treatment, `Time-to-reccurence (days)`, `Latency (days)`) %>% 
+      dplyr::group_by(gene, Number.x, patient_state) %>% 
       dplyr::summarise(agg_lab_id = paste(LAB_ID, collapse=";"),
                        agg_collection_type = paste(collection_type, collapse = ";"), .groups = "keep") -> tmp
     # print(.d)
     if ( nrow(.d)==2 & any(!is.na(.d$manifestation_type)) ){
       .d_initial <- .d[manifestation_type=="Initial manifestation"]
       .d_second <- .d[manifestation_type=="Second manifestation"]
-      tmp$ratio <- .d_initial$conc / .d_second$conc
+      tmp$ratio <- .d_initial$conc - .d_second$conc
     } else if (nrow(.d)==2) {
       .d_initial <- .d[collection_type=="E1"]
       .d_second <- .d[collection_type=="E2"]
@@ -2062,27 +2248,27 @@ data_long %>%
   rbindlist() %>%
   dplyr::mutate(sample_comparison = plyr::mapvalues(patient_state, from=c(0, 1, 2), to=c("ctrl", "iGBMoverrGBM", "pre-surgery/post-surgery"))) %>%
   dplyr::filter(sample_comparison=="iGBMoverrGBM" ) %>%
-  dplyr::mutate(log2_conc = log2(ratio)) %>%
+  dplyr::mutate(log2_conc = ratio) %>%
   # dplyr::group_by(gene, Number.x) %>%
   # dplyr::add_count() %>%
   # dplyr::filter(n==2) %>%
   dplyr::mutate(class = plyr::mapvalues(patient_state, from=c(1), to=c("iGBMoverrGBM"))) -> pdata
 
-data_long %>% 
-  dplyr::mutate(conc = conc+1) %>% # Add one to avoid cases of 0 division
+data_long_tmp %>% 
+  # dplyr::mutate(conc = conc+1) %>% # Add one to avoid cases of 0 division
   dplyr::filter(!is.na(manifestation_type) | patient_state!=0) %>%
   dplyr::group_by(gene, Number.x) %>%
   dplyr::group_map(function(.d, ...){
     .d <- as.data.table(.d)
     .d %>% 
-      dplyr::group_by(gene, Number.x, patient_state, `Age at surgery (years)`, Sex, `Tumor localization`, `Type of resection`, `MGMT promotor methylation`, `p53 accumulation`, `Ki67-Li`, `EGFR vIII`, Treatment, `Time-to-reccurence (days)`, `Latency (days)`) %>% 
+      dplyr::group_by(gene, Number.x, patient_state) %>% 
       dplyr::summarise(agg_lab_id = paste(LAB_ID, collapse=";"),
                        agg_collection_type = paste(collection_type, collapse = ";"), .groups = "keep") -> tmp
     # print(.d)
     if ( nrow(.d)==2 & any(!is.na(.d$manifestation_type)) ){
       .d_initial <- .d[manifestation_type=="Initial manifestation"]
       .d_second <- .d[manifestation_type=="Second manifestation"]
-      tmp$ratio <- .d_second$conc / .d_initial$conc
+      tmp$ratio <- .d_second$conc - .d_initial$conc
     } else if (nrow(.d)==2) {
       .d_initial <- .d[collection_type=="E1"]
       .d_second <- .d[collection_type=="E2"]
@@ -2096,7 +2282,7 @@ data_long %>%
   dplyr::mutate(sample_comparison = plyr::mapvalues(patient_state, from=c(0, 1, 2), to=c("ctrl", "rGBMoveriGBM", "pre-surgery/post-surgery"))) %>%
   dplyr::filter(sample_comparison=="rGBMoveriGBM" ) %>%
   dplyr::filter(grepl(";", agg_lab_id)) %>%
-  dplyr::mutate(log2_conc = log2(ratio)) %>%
+  dplyr::mutate(log2_conc = ratio) %>%
   # dplyr::group_by(gene, Number.x) %>%
   # dplyr::add_count() %>%
   # dplyr::filter(n==2) %>%
@@ -2121,6 +2307,7 @@ pdata %>%
 
 ## Prediction
 train_df <- data_wide
+train_df <- data_wide[Number.x!=32]
 train_df <- na.omit(train_df)  %>% dplyr::select(-Number.x, )
 train_df <- train_df[ !is.infinite(train_df$ASAH1) , ]
 ## Make Valid Column Names 
@@ -2174,16 +2361,23 @@ pdata %>%
 ## Only use proteins for prediction
 data_wide %>%
   mutate(n = row_number()) %>%
-  dplyr::select(Number.x, class, n, ASAH1, `MMP-9`, SYNEMIN, GPNMB, `Tumor localization`, Sex, `Age at surgery (years)`, `Type of resection`, `Time-to-reccurence (days)`) -> data_wide
-data_wide %>%
-  dplyr::mutate(`Time-to-reccurence (days)` = ifelse(class=="iGBM", 0, `Time-to-reccurence (days)`)) -> data_wide
+  dplyr::select(Number.x, class, n, ASAH1, `MMP-9`, SYNEMIN, GPNMB,  Sex, `Age at surgery (years)`, `Tumor localization`, `Type of resection`) -> data_wide
+# data_wide %>%
+  # dplyr::mutate(`Time-to-reccurence (days)` = ifelse(class=="iGBM", 0, `Time-to-reccurence (days)`)) -> data_wide
 
 ## Prediction
 train_df <- data_wide
 train_df <- na.omit(train_df)  %>% dplyr::select(-Number.x, -n)
 colnames(train_df) <- make.names(colnames(train_df))
 train_df <- as.data.frame(train_df)
+train_df_proteins <- median_centre_data(train_df[, c(1:5)])
+train_df <- cbind(train_df_proteins, train_df[, c(6:9)])
 pred_obj_1.4 <- run_predictions(train_df, pred_col_prob = "rGBM")
+
+# coef(pred_obj_1.5$model$finalModel, pred_obj_1.5$model$bestTune$lambda)
+# coef(pred_obj_1.41$model$finalModel, pred_obj_1.41$model$bestTune$lambda)
+# coef(pred_obj_1.4$model$finalModel, pred_obj_1.4$model$bestTune$lambda)
+
 
 ## ROC Figure 
 g <- ggplot(pred_obj_1.4$roc_data, aes(m=rGBM, d=factor(obs, levels = c("iGBM", "rGBM")), color=Model)) + 
@@ -2204,6 +2398,61 @@ pred_obj_1.4$roc_data %>%
   dplyr::rename(ctrl=iGBM, GBM=rGBM) %>%
   dplyr::mutate(pred=plyr::mapvalues(pred, from=c("iGBM", "rGBM"), to=c("ctrl", "GBM"))) %>%
   dplyr::mutate(obs=plyr::mapvalues(obs, from=c("iGBM", "rGBM"), to=c("ctrl", "GBM"))) -> tmp_pred_obj_1.4_roc_data
+
+# iGBM vs rGBM with clinical data Only ----
+data_long %>% 
+  dplyr::group_by(gene, Number.x) %>%
+  dplyr::mutate(sample_comparison = plyr::mapvalues(patient_state, from=c(0, 1, 2), to=c("ctrl", "iGBM/rGBM", "pre-surgery/post-surgery"))) %>%
+  dplyr::filter(sample_comparison=="iGBM/rGBM" | sample_comparison=="ctrl") %>%
+  dplyr::mutate(log2_conc = log2(conc+1)) %>%
+  dplyr::filter(manifestation_type=="Second manifestation" | manifestation_type=="Initial manifestation") %>%
+  dplyr::mutate(class = plyr::mapvalues(manifestation_type, from=c("Initial manifestation","Second manifestation"), to=c("iGBM", "rGBM"))) -> pdata
+
+## Pivot Table
+pdata %>%
+  dplyr::select(Number.x, gene, `Age at surgery (years)`, Sex, `Tumor localization`, `Type of resection`, `MGMT promotor methylation`, `p53 accumulation`, `Ki67-Li`, `EGFR vIII`, Treatment, `Time-to-reccurence (days)`, `Latency (days)`, log2_conc, sample_comparison, class) %>%
+  tidyr::pivot_wider(id_cols = c("Number.x",'Age at surgery (years)', 'Sex', 'Tumor localization', 'Type of resection', 'MGMT promotor methylation', 'p53 accumulation', 'Ki67-Li', 'EGFR vIII', 'Treatment', 'Time-to-reccurence (days)', 'Latency (days)', 'sample_comparison',  'class'), names_from = "gene", values_from = "log2_conc" ) %>%
+  dplyr::ungroup() -> data_wide
+
+## Only use proteins for prediction
+data_wide %>%
+  mutate(n = row_number()) %>%
+  dplyr::select(Number.x, class, n,  Sex, `Age at surgery (years)`, `Tumor localization`, `Type of resection`) -> data_wide
+# data_wide %>%
+  # dplyr::mutate(`Time-to-reccurence (days)` = ifelse(class=="iGBM", 0, `Time-to-reccurence (days)`)) -> data_wide
+
+## Prediction
+train_df <- data_wide
+train_df <- na.omit(train_df)  %>% dplyr::select(-Number.x, -n)
+colnames(train_df) <- make.names(colnames(train_df))
+train_df <- as.data.frame(train_df)
+# train_df_proteins <- median_centre_data(train_df[, c(1:5)])
+# train_df <- cbind(train_df_proteins, train_df[, c(6:9)])
+pred_obj_1.41 <- run_predictions(train_df, pred_col_prob = "rGBM")
+
+# coef(pred_obj_1.5$model$finalModel, pred_obj_1.5$model$bestTune$lambda)
+# coef(pred_obj_1.4$model$finalModel, pred_obj_1.4$model$bestTune$lambda)
+
+
+## ROC Figure 
+g <- ggplot(pred_obj_1.41$roc_data, aes(m=rGBM, d=factor(obs, levels = c("iGBM", "rGBM")), color=Model)) + 
+  geom_roc(n.cuts=0) + 
+  scale_color_manual(values = RColorBrewer::brewer.pal(length(unique(pred_obj_1.4$master_lift$liftModelVar)), "Dark2"), labels=c("Logit", "Elastic Logit", "KNN", "RF")) +
+  coord_equal() +
+  style_roc(x="1 - Specificity", y="Sensitivity")
+
+auc_tbl_1.41 <- as.data.table(calc_auc(g))
+
+g <- g + annotate("text", x=0.70, y=0.45, label=paste("AUC =", round(auc_tbl_1.41[Model=="Logit"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.41$master_lift$liftModelVar)), "Dark2")[1])
+g <- g + annotate("text", x=0.70, y=0.35, label=paste("AUC =", round(auc_tbl_1.41[Model=="Elastic Logit"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.41$master_lift$liftModelVar)), "Dark2")[2])
+g <- g + annotate("text", x=0.70, y=0.25, label=paste("AUC =", round(auc_tbl_1.41[Model=="KNN"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.41$master_lift$liftModelVar)), "Dark2")[3])
+g <- g + annotate("text", x=0.70, y=0.15, label=paste("AUC =", round(auc_tbl_1.41[Model=="RF"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.41$master_lift$liftModelVar)), "Dark2")[4])
+subfigure_1.41 <- g
+
+pred_obj_1.41$roc_data %>%
+  dplyr::rename(ctrl=iGBM, GBM=rGBM) %>%
+  dplyr::mutate(pred=plyr::mapvalues(pred, from=c("iGBM", "rGBM"), to=c("ctrl", "GBM"))) %>%
+  dplyr::mutate(obs=plyr::mapvalues(obs, from=c("iGBM", "rGBM"), to=c("ctrl", "GBM"))) -> tmp_pred_obj_1.41_roc_data
 
 # iGBM vs rGBM ratio  with clinical data ----
 # data_long %>% 
@@ -2335,12 +2584,12 @@ pred_obj_1.4$roc_data %>%
 # Full
 master_roc_data <- rbindlist(list(`Ctrl vs iGBM`=pred_obj_1.1$roc_data, `Ctrl vs rGBM`=pred_obj_1.2$roc_data, `iGBM vs rGBM protein`=tmp_pred_obj_1.5_roc_data, `iGBM vs rGBM protein + clinical`=tmp_pred_obj_1.4_roc_data, `iGBM vs rGBM protein ratios`=tmp_pred_obj_1.3_roc_data), idcol = "Comparison")
 
-master_auc_data <- rbindlist(list(`Ctrl vs iGBM`=auc_tbl_1.1, `Ctrl vs rGBM`=auc_tbl_1.2, `iGBM vs rGBM protein`=auc_tbl_1.5, `iGBM vs rGBM protein + clinical`=auc_tbl_1.4, `iGBM vs rGBM protein ratios`=auc_tbl_1.3), idcol = "Comparison")
+master_auc_data <- rbindlist(list(`iGBM vs rGBM protein + clinical`=auc_tbl_1.41, `Ctrl vs iGBM`=auc_tbl_1.1, `Ctrl vs rGBM`=auc_tbl_1.2, `iGBM vs rGBM protein`=auc_tbl_1.5, `iGBM vs rGBM protein + clinical`=auc_tbl_1.4, `iGBM vs rGBM protein ratios`=auc_tbl_1.3), idcol = "Comparison")
 
 # Only iGMB and rGBM
-master_roc_data <- rbindlist(list(`iGBM vs rGBM protein`=tmp_pred_obj_1.5_roc_data, `iGBM vs rGBM protein + clinical`=tmp_pred_obj_1.4_roc_data, `iGBM vs rGBM protein ratios`=tmp_pred_obj_1.3_roc_data), idcol = "Comparison")
+master_roc_data <- rbindlist(list(`iGBM vs rGBM clinical`=tmp_pred_obj_1.41_roc_data, `iGBM vs rGBM protein`=tmp_pred_obj_1.5_roc_data, `iGBM vs rGBM protein + clinical`=tmp_pred_obj_1.4_roc_data, `iGBM vs rGBM protein ratios`=tmp_pred_obj_1.3_roc_data), idcol = "Comparison")
 
-master_auc_data <- rbindlist(list(`iGBM vs rGBM protein`=auc_tbl_1.5, `iGBM vs rGBM protein + clinical`=auc_tbl_1.4, `iGBM vs rGBM protein ratios`=auc_tbl_1.3), idcol = "Comparison")
+master_auc_data <- rbindlist(list(`iGBM vs rGBM clinical`=auc_tbl_1.41, `iGBM vs rGBM protein`=auc_tbl_1.5, `iGBM vs rGBM protein + clinical`=auc_tbl_1.4, `iGBM vs rGBM protein ratios`=auc_tbl_1.3), idcol = "Comparison")
 
 
 master_auc_data[Model %in% c("Elastic Logit")] %>%
@@ -2756,6 +3005,425 @@ g
 subfigure_5 <- g
 ```
 
+<!-- # Combination Proteins -->
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=8, fig.width=9, include=FALSE}
+# iGBM vs rGBM protein conc----
+data_long %>% 
+  dplyr::group_by(gene, Number.x) %>%
+  dplyr::mutate(sample_comparison = plyr::mapvalues(patient_state, from=c(0, 1, 2), to=c("ctrl", "iGBM/rGBM", "pre-surgery/post-surgery"))) %>%
+  dplyr::filter(sample_comparison=="iGBM/rGBM" | sample_comparison=="ctrl") %>%
+  dplyr::mutate(log2_conc = log2(conc+1)) %>%
+  dplyr::filter(manifestation_type=="Second manifestation" | manifestation_type=="Initial manifestation") %>%
+  dplyr::mutate(class = plyr::mapvalues(manifestation_type, from=c("Initial manifestation","Second manifestation"), to=c("iGBM", "rGBM"))) -> pdata
+
+## Pivot Table
+pdata %>%
+  dplyr::select(Number.x, gene, `Age at surgery (years)`, Sex, `Tumor localization`, `Type of resection`, `MGMT promotor methylation`, `p53 accumulation`, `Ki67-Li`, `EGFR vIII`, Treatment, `Time-to-reccurence (days)`, `Latency (days)`, log2_conc, sample_comparison, class) %>%
+  tidyr::pivot_wider(id_cols = c("Number.x",'Age at surgery (years)', 'Sex', 'Tumor localization', 'Type of resection', 'MGMT promotor methylation', 'p53 accumulation', 'Ki67-Li', 'EGFR vIII', 'Treatment', 'Time-to-reccurence (days)', 'Latency (days)', 'sample_comparison',  'class'), names_from = "gene", values_from = "log2_conc" ) %>%
+  dplyr::ungroup() -> data_wide
+
+## Only use proteins for prediction
+data_wide %>%
+  mutate(n = row_number()) %>%
+  dplyr::select(Number.x, class, n, ASAH1, `MMP-9`, SYNEMIN, GPNMB) -> data_wide
+
+## Prediction
+train_df <- data_wide
+train_df <- na.omit(train_df)  %>% dplyr::select(-Number.x, -n)
+colnames(train_df) <- make.names(colnames(train_df))
+train_df <- as.data.frame(train_df)
+train_df <- median_centre_data(train_df)
+train_df <- train_df %>% dplyr::select(class, ASAH1)
+train_df$dummy_var <- 0
+pred_obj_1.51 <- run_predictions(train_df, pred_col_prob = "rGBM")
+
+## ROC Figure 
+g <- ggplot(pred_obj_1.51$roc_data, aes(m=rGBM, d=factor(obs, levels = c("iGBM", "rGBM")), color=Model)) + 
+  geom_roc(n.cuts=0) + 
+  scale_color_manual(values = RColorBrewer::brewer.pal(length(unique(pred_obj_1.51$master_lift$liftModelVar)), "Dark2"), labels=c("Logit", "Elastic Logit", "KNN", "RF")) +
+  coord_equal() +
+  style_roc(x="1 - Specificity", y="Sensitivity")
+
+auc_tbl_1.51 <- as.data.table(calc_auc(g))
+
+g <- g + annotate("text", x=0.70, y=0.45, label=paste("AUC =", round(auc_tbl_1.51[Model=="Logit"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.51$master_lift$liftModelVar)), "Dark2")[1])
+g <- g + annotate("text", x=0.70, y=0.35, label=paste("AUC =", round(auc_tbl_1.51[Model=="Elastic Logit"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.51$master_lift$liftModelVar)), "Dark2")[2])
+g <- g + annotate("text", x=0.70, y=0.25, label=paste("AUC =", round(auc_tbl_1.51[Model=="KNN"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.51$master_lift$liftModelVar)), "Dark2")[3])
+g <- g + annotate("text", x=0.70, y=0.15, label=paste("AUC =", round(auc_tbl_1.51[Model=="RF"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.51$master_lift$liftModelVar)), "Dark2")[4])
+subfigure_1.51 <- g
+
+pred_obj_1.51$roc_data %>%
+  dplyr::rename(ctrl=iGBM, GBM=rGBM) %>%
+  dplyr::mutate(pred=plyr::mapvalues(pred, from=c("iGBM", "rGBM"), to=c("ctrl", "GBM"))) %>%
+  dplyr::mutate(obs=plyr::mapvalues(obs, from=c("iGBM", "rGBM"), to=c("ctrl", "GBM"))) -> tmp_pred_obj_1.51_roc_data
+
+## 2 Proteins
+## Prediction
+train_df <- data_wide
+train_df <- na.omit(train_df)  %>% dplyr::select(-Number.x, -n)
+colnames(train_df) <- make.names(colnames(train_df))
+train_df <- as.data.frame(train_df)
+train_df <- median_centre_data(train_df)
+train_df <- train_df %>% dplyr::select(class, ASAH1, SYNEMIN)
+pred_obj_1.52 <- run_predictions(train_df, pred_col_prob = "rGBM")
+
+## ROC Figure 
+g <- ggplot(pred_obj_1.52$roc_data, aes(m=rGBM, d=factor(obs, levels = c("iGBM", "rGBM")), color=Model)) + 
+  geom_roc(n.cuts=0) + 
+  scale_color_manual(values = RColorBrewer::brewer.pal(length(unique(pred_obj_1.52$master_lift$liftModelVar)), "Dark2"), labels=c("Logit", "Elastic Logit", "KNN", "RF")) +
+  coord_equal() +
+  style_roc(x="1 - Specificity", y="Sensitivity")
+
+auc_tbl_1.52 <- as.data.table(calc_auc(g))
+
+g <- g + annotate("text", x=0.70, y=0.45, label=paste("AUC =", round(auc_tbl_1.52[Model=="Logit"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.52$master_lift$liftModelVar)), "Dark2")[1])
+g <- g + annotate("text", x=0.70, y=0.35, label=paste("AUC =", round(auc_tbl_1.52[Model=="Elastic Logit"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.52$master_lift$liftModelVar)), "Dark2")[2])
+g <- g + annotate("text", x=0.70, y=0.25, label=paste("AUC =", round(auc_tbl_1.52[Model=="KNN"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.52$master_lift$liftModelVar)), "Dark2")[3])
+g <- g + annotate("text", x=0.70, y=0.15, label=paste("AUC =", round(auc_tbl_1.52[Model=="RF"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.52$master_lift$liftModelVar)), "Dark2")[4])
+subfigure_1.52 <- g
+
+pred_obj_1.52$roc_data %>%
+  dplyr::rename(ctrl=iGBM, GBM=rGBM) %>%
+  dplyr::mutate(pred=plyr::mapvalues(pred, from=c("iGBM", "rGBM"), to=c("ctrl", "GBM"))) %>%
+  dplyr::mutate(obs=plyr::mapvalues(obs, from=c("iGBM", "rGBM"), to=c("ctrl", "GBM"))) -> tmp_pred_obj_1.52_roc_data
+
+## 3 Protein
+## Prediction
+train_df <- data_wide
+train_df <- na.omit(train_df)  %>% dplyr::select(-Number.x, -n)
+colnames(train_df) <- make.names(colnames(train_df))
+train_df <- as.data.frame(train_df)
+train_df <- median_centre_data(train_df)
+train_df <- train_df %>% dplyr::select(class, ASAH1, SYNEMIN, GPNMB)
+pred_obj_1.53 <- run_predictions(train_df, pred_col_prob = "rGBM")
+
+## ROC Figure 
+g <- ggplot(pred_obj_1.53$roc_data, aes(m=rGBM, d=factor(obs, levels = c("iGBM", "rGBM")), color=Model)) + 
+  geom_roc(n.cuts=0) + 
+  scale_color_manual(values = RColorBrewer::brewer.pal(length(unique(pred_obj_1.53$master_lift$liftModelVar)), "Dark2"), labels=c("Logit", "Elastic Logit", "KNN", "RF")) +
+  coord_equal() +
+  style_roc(x="1 - Specificity", y="Sensitivity")
+
+auc_tbl_1.53 <- as.data.table(calc_auc(g))
+
+g <- g + annotate("text", x=0.70, y=0.45, label=paste("AUC =", round(auc_tbl_1.53[Model=="Logit"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.53$master_lift$liftModelVar)), "Dark2")[1])
+g <- g + annotate("text", x=0.70, y=0.35, label=paste("AUC =", round(auc_tbl_1.53[Model=="Elastic Logit"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.53$master_lift$liftModelVar)), "Dark2")[2])
+g <- g + annotate("text", x=0.70, y=0.25, label=paste("AUC =", round(auc_tbl_1.53[Model=="KNN"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.53$master_lift$liftModelVar)), "Dark2")[3])
+g <- g + annotate("text", x=0.70, y=0.15, label=paste("AUC =", round(auc_tbl_1.53[Model=="RF"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.53$master_lift$liftModelVar)), "Dark2")[4])
+subfigure_1.53 <- g
+
+pred_obj_1.53$roc_data %>%
+  dplyr::rename(ctrl=iGBM, GBM=rGBM) %>%
+  dplyr::mutate(pred=plyr::mapvalues(pred, from=c("iGBM", "rGBM"), to=c("ctrl", "GBM"))) %>%
+  dplyr::mutate(obs=plyr::mapvalues(obs, from=c("iGBM", "rGBM"), to=c("ctrl", "GBM"))) -> tmp_pred_obj_1.53_roc_data
+
+## 4 Protein
+## Prediction
+train_df <- data_wide
+train_df <- na.omit(train_df)  %>% dplyr::select(-Number.x, -n)
+colnames(train_df) <- make.names(colnames(train_df))
+train_df <- as.data.frame(train_df)
+train_df <- median_centre_data(train_df)
+train_df <- train_df %>% dplyr::select(class, ASAH1, SYNEMIN, GPNMB, MMP.9)
+pred_obj_1.54 <- run_predictions(train_df, pred_col_prob = "rGBM")
+
+## ROC Figure 
+g <- ggplot(pred_obj_1.54$roc_data, aes(m=rGBM, d=factor(obs, levels = c("iGBM", "rGBM")), color=Model)) + 
+  geom_roc(n.cuts=0) + 
+  scale_color_manual(values = RColorBrewer::brewer.pal(length(unique(pred_obj_1.54$master_lift$liftModelVar)), "Dark2"), labels=c("Logit", "Elastic Logit", "KNN", "RF")) +
+  coord_equal() +
+  style_roc(x="1 - Specificity", y="Sensitivity")
+
+auc_tbl_1.54 <- as.data.table(calc_auc(g))
+
+g <- g + annotate("text", x=0.70, y=0.45, label=paste("AUC =", round(auc_tbl_1.54[Model=="Logit"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.54$master_lift$liftModelVar)), "Dark2")[1])
+g <- g + annotate("text", x=0.70, y=0.35, label=paste("AUC =", round(auc_tbl_1.54[Model=="Elastic Logit"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.54$master_lift$liftModelVar)), "Dark2")[2])
+g <- g + annotate("text", x=0.70, y=0.25, label=paste("AUC =", round(auc_tbl_1.54[Model=="KNN"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.54$master_lift$liftModelVar)), "Dark2")[3])
+g <- g + annotate("text", x=0.70, y=0.15, label=paste("AUC =", round(auc_tbl_1.54[Model=="RF"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.54$master_lift$liftModelVar)), "Dark2")[4])
+subfigure_1.54 <- g
+
+pred_obj_1.54$roc_data %>%
+  dplyr::rename(ctrl=iGBM, GBM=rGBM) %>%
+  dplyr::mutate(pred=plyr::mapvalues(pred, from=c("iGBM", "rGBM"), to=c("ctrl", "GBM"))) %>%
+  dplyr::mutate(obs=plyr::mapvalues(obs, from=c("iGBM", "rGBM"), to=c("ctrl", "GBM"))) -> tmp_pred_obj_1.54_roc_data
+
+master_Table <- rbindlist(list(`1 Protein`=tmp_pred_obj_1.51_roc_data, `1-2 Proteins`=tmp_pred_obj_1.52_roc_data, `1-3 Proteins`=tmp_pred_obj_1.53_roc_data, `1-4 Proteins`=tmp_pred_obj_1.54_roc_data), idcol = 'Number of Proteins')
+
+
+master_auc_data <- rbindlist(list(`1 Protein`=auc_tbl_1.51, `1-2 Proteins`=auc_tbl_1.52, `1-3 Proteins`=auc_tbl_1.53, `1-4 Proteins`=auc_tbl_1.54), idcol = "Number of Proteins")
+
+
+master_auc_data[Model %in% c("Elastic Logit")] %>%
+  dplyr::mutate(AUC = sprintf("AUC: %s%%", round(AUC*100, 0))) %>%
+  tidyr::pivot_wider(id_cols = "Number of Proteins", names_from = Model, values_from = AUC) -> auc_annotation_tbl
+
+table_theme <- ttheme_minimal(core = list(fg_params=list(col=(RColorBrewer::brewer.pal(5, "Dark2")))), base_size = 13)
+auc_grob <- tableGrob(auc_annotation_tbl, rows=NULL, theme = table_theme)
+
+g <- ggplot(master_Table[Model %in% c("Elastic Logit")], aes(m=GBM, d=factor(obs, levels = c("ctrl", "GBM")), color=`Number of Proteins`), linetype='solid') +
+  geom_roc(n.cuts=0, size=1.5) + 
+  scale_color_manual(values = RColorBrewer::brewer.pal(5, "Dark2")) +
+  # scale_linetype_manual(values=c("solid", "dotted"), labels=c("Elastic Logit")) + 
+  coord_equal() +
+  style_roc(x="1 - Specificity", y="Sensitivity") +
+  annotation_custom(auc_grob, xmin=0.25, xmax=0.95, ymin=0.10, ymax=0.30) +
+  theme(axis.title = element_text(size=16),
+        axis.text = element_text(size=15),
+        legend.title = element_text(size=14),
+        legend.text = element_text(size=13)) +
+  guides(col="none")
+g
+# iGBM vs rGBM ratio ----
+
+## Median Centre data before computing ratios
+
+data_long[patient_state==1] %>%
+  dplyr::group_by(gene, Number.x) %>%
+  dplyr::add_count() %>%
+  dplyr::filter(n==2) %>% 
+  dplyr::ungroup() -> tmp_select
+
+tmp_select %>%
+  dplyr::select(gene, Number.x, conc, class=manifestation_type) %>%
+  dplyr::mutate(conc = log2(conc+1)) -> tmp
+tmp %>%
+  tidyr::pivot_wider(id_cols = c(Number.x, class), names_from = gene, values_from = conc ) -> tmp
+colnames(tmp) <- make.names(colnames(tmp))
+tmp <- na.omit(tmp)
+
+tmp_df_proteins <- median_centre_data(tmp[, c(2:6)])
+tmp_median_centred <- cbind(tmp[, 1], tmp_df_proteins) 
+
+tmp_median_centred %>%
+  dplyr::rename(manifestation_type=class, `MMP-9`=MMP.9) %>%
+  tidyr::pivot_longer(cols = c(ASAH1, `MMP-9`, SYNEMIN, GPNMB), names_to = "gene", values_to = "conc") -> tmp_median_centred
+
+data_long_tmp <- merge(tmp_select[, c("Number.x", "gene", "patient_state", "LAB_ID", "collection_type", "manifestation_type")], tmp_median_centred, by=c("Number.x", "manifestation_type", "gene"), all.y=T)
+
+ggplot(data_long_tmp, aes(x=as.factor(Number.x), y=conc, col=Number.x)) +
+    geom_boxplot()
+
+data_long_tmp %>% 
+  dplyr::group_by(gene, Number.x) %>%
+  dplyr::group_map(function(.d, ...){
+    .d <- as.data.table(.d)
+    .d %>% 
+      dplyr::group_by(gene, Number.x, patient_state) %>% 
+      dplyr::summarise(agg_lab_id = paste(LAB_ID, collapse=";"),
+                       agg_collection_type = paste(collection_type, collapse = ";"), .groups = "keep") -> tmp
+    # print(.d)
+    if ( nrow(.d)==2 & any(!is.na(.d$manifestation_type)) ){
+      .d_initial <- .d[manifestation_type=="Initial manifestation"]
+      .d_second <- .d[manifestation_type=="Second manifestation"]
+      tmp$ratio <- .d_initial$conc - .d_second$conc
+    } else if (nrow(.d)==2) {
+      .d_initial <- .d[collection_type=="E1"]
+      .d_second <- .d[collection_type=="E2"]
+      tmp$ratio <- .d_initial$conc / .d_second$conc
+    } else {
+      tmp$ratio <- .d$conc
+    }
+    return(tmp)
+  }, .keep = TRUE) %>%
+  rbindlist() %>%
+  dplyr::mutate(sample_comparison = plyr::mapvalues(patient_state, from=c(0, 1, 2), to=c("ctrl", "iGBMoverrGBM", "pre-surgery/post-surgery"))) %>%
+  dplyr::filter(sample_comparison=="iGBMoverrGBM" ) %>%
+  dplyr::mutate(log2_conc = ratio) %>%
+  # dplyr::group_by(gene, Number.x) %>%
+  # dplyr::add_count() %>%
+  # dplyr::filter(n==2) %>%
+  dplyr::mutate(class = plyr::mapvalues(patient_state, from=c(1), to=c("iGBMoverrGBM"))) -> pdata
+
+data_long_tmp %>% 
+  # dplyr::mutate(conc = conc+1) %>% # Add one to avoid cases of 0 division
+  dplyr::filter(!is.na(manifestation_type) | patient_state!=0) %>%
+  dplyr::group_by(gene, Number.x) %>%
+  dplyr::group_map(function(.d, ...){
+    .d <- as.data.table(.d)
+    .d %>% 
+      dplyr::group_by(gene, Number.x, patient_state) %>% 
+      dplyr::summarise(agg_lab_id = paste(LAB_ID, collapse=";"),
+                       agg_collection_type = paste(collection_type, collapse = ";"), .groups = "keep") -> tmp
+    # print(.d)
+    if ( nrow(.d)==2 & any(!is.na(.d$manifestation_type)) ){
+      .d_initial <- .d[manifestation_type=="Initial manifestation"]
+      .d_second <- .d[manifestation_type=="Second manifestation"]
+      tmp$ratio <- .d_second$conc - .d_initial$conc
+    } else if (nrow(.d)==2) {
+      .d_initial <- .d[collection_type=="E1"]
+      .d_second <- .d[collection_type=="E2"]
+      tmp$ratio <- .d_initial$conc / .d_second$conc
+    } else {
+      tmp$ratio <- .d$conc
+    }
+    return(tmp)
+  }, .keep = TRUE) %>%
+  rbindlist() %>%
+  dplyr::mutate(sample_comparison = plyr::mapvalues(patient_state, from=c(0, 1, 2), to=c("ctrl", "rGBMoveriGBM", "pre-surgery/post-surgery"))) %>%
+  dplyr::filter(sample_comparison=="rGBMoveriGBM" ) %>%
+  dplyr::filter(grepl(";", agg_lab_id)) %>%
+  dplyr::mutate(log2_conc = ratio) %>%
+  # dplyr::group_by(gene, Number.x) %>%
+  # dplyr::add_count() %>%
+  # dplyr::filter(n==2) %>%
+  dplyr::mutate(class = plyr::mapvalues(patient_state, from=c(1), to=c("rGBMoveriGBM"))) -> pdata2
+
+pdata %>%
+  dplyr::select(Number.x, gene, log2_conc) %>%
+  tidyr::pivot_wider(id_cols = "Number.x", names_from = "gene", values_from = "log2_conc") %>%
+  dplyr::mutate(class="iGBM") -> pdata
+
+pdata2 %>%
+  dplyr::select(Number.x, gene, log2_conc) %>%
+  tidyr::pivot_wider(id_cols = "Number.x", names_from = "gene", values_from = "log2_conc") %>%
+  dplyr::mutate(class="rGBM") -> pdata2
+
+
+pdata <- rbindlist(list(pdata, pdata2))
+
+## Pivot Table
+pdata %>%
+  dplyr::select(Number.x, class, ASAH1, SYNEMIN, GPNMB, `MMP-9`) -> data_wide
+
+## Prediction
+train_df <- data_wide
+train_df <- data_wide[Number.x!=32]
+train_df <- na.omit(train_df)  %>% dplyr::select(-Number.x, )
+train_df <- train_df[ !is.infinite(train_df$ASAH1) , ]
+## Make Valid Column Names 
+colnames(train_df) <- make.names(colnames(train_df))
+train_df$class <- factor(train_df$class, levels=c("iGBM", "rGBM"))
+colnames(train_df) <- make.names(colnames(train_df))
+train_df <- as.data.frame(train_df)
+
+## 1 Protein ----
+train_df_sub <- train_df %>% dplyr::select(class, ASAH1)
+train_df_sub$dummy_var <- 0
+pred_obj_1.31 <- run_predictions(train_df_sub, pred_col_prob = "rGBM")
+
+## ROC Figure 
+g <- ggplot(pred_obj_1.31$roc_data, aes(m=rGBM, d=factor(obs, levels = c("iGBM", "rGBM")), color=Model)) +
+  geom_roc(n.cuts=0) + 
+  scale_color_manual(values = RColorBrewer::brewer.pal(length(unique(pred_obj_1.31$master_lift$liftModelVar)), "Dark2"), labels=c("Logit", "Elastic Logit", "KNN", "RF")) +
+  coord_equal() +
+  style_roc(x="1 - Specificity", y="Sensitivity")
+
+auc_tbl_1.31 <- as.data.table(calc_auc(g))
+
+g <- g + annotate("text", x=0.70, y=0.45, label=paste("AUC =", round(auc_tbl_1.31[Model=="Logit"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.31$master_lift$liftModelVar)), "Dark2")[1])
+g <- g + annotate("text", x=0.70, y=0.35, label=paste("AUC =", round(auc_tbl_1.31[Model=="Elastic Logit"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.31$master_lift$liftModelVar)), "Dark2")[2])
+g <- g + annotate("text", x=0.70, y=0.25, label=paste("AUC =", round(auc_tbl_1.31[Model=="KNN"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.31$master_lift$liftModelVar)), "Dark2")[3])
+g <- g + annotate("text", x=0.70, y=0.15, label=paste("AUC =", round(auc_tbl_1.31[Model=="RF"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.31$master_lift$liftModelVar)), "Dark2")[4])
+subfigure_1.31 <- g
+
+pred_obj_1.31$roc_data %>%
+  dplyr::rename(ctrl=iGBM, GBM=rGBM) %>%
+  dplyr::mutate(pred=plyr::mapvalues(pred, from=c("iGBM", "rGBM"), to=c("ctrl", "GBM"))) %>%
+  dplyr::mutate(obs=plyr::mapvalues(obs, from=c("iGBM", "rGBM"), to=c("ctrl", "GBM"))) -> tmp_pred_obj_1.31_roc_data
+
+## 2 Protein ----
+train_df_sub <- train_df %>% dplyr::select(class, ASAH1, SYNEMIN)
+pred_obj_1.32 <- run_predictions(train_df_sub, pred_col_prob = "rGBM")
+
+## ROC Figure 
+g <- ggplot(pred_obj_1.32$roc_data, aes(m=rGBM, d=factor(obs, levels = c("iGBM", "rGBM")), color=Model)) +
+  geom_roc(n.cuts=0) + 
+  scale_color_manual(values = RColorBrewer::brewer.pal(length(unique(pred_obj_1.32$master_lift$liftModelVar)), "Dark2"), labels=c("Logit", "Elastic Logit", "KNN", "RF")) +
+  coord_equal() +
+  style_roc(x="1 - Specificity", y="Sensitivity")
+
+auc_tbl_1.32 <- as.data.table(calc_auc(g))
+
+g <- g + annotate("text", x=0.70, y=0.45, label=paste("AUC =", round(auc_tbl_1.32[Model=="Logit"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.32$master_lift$liftModelVar)), "Dark2")[1])
+g <- g + annotate("text", x=0.70, y=0.35, label=paste("AUC =", round(auc_tbl_1.32[Model=="Elastic Logit"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.32$master_lift$liftModelVar)), "Dark2")[2])
+g <- g + annotate("text", x=0.70, y=0.25, label=paste("AUC =", round(auc_tbl_1.32[Model=="KNN"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.32$master_lift$liftModelVar)), "Dark2")[3])
+g <- g + annotate("text", x=0.70, y=0.15, label=paste("AUC =", round(auc_tbl_1.32[Model=="RF"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.32$master_lift$liftModelVar)), "Dark2")[4])
+subfigure_1.32 <- g
+
+pred_obj_1.32$roc_data %>%
+  dplyr::rename(ctrl=iGBM, GBM=rGBM) %>%
+  dplyr::mutate(pred=plyr::mapvalues(pred, from=c("iGBM", "rGBM"), to=c("ctrl", "GBM"))) %>%
+  dplyr::mutate(obs=plyr::mapvalues(obs, from=c("iGBM", "rGBM"), to=c("ctrl", "GBM"))) -> tmp_pred_obj_1.32_roc_data
+
+## 3 Protein ----
+train_df_sub <- train_df %>% dplyr::select(class, ASAH1, SYNEMIN, GPNMB)
+pred_obj_1.33 <- run_predictions(train_df_sub, pred_col_prob = "rGBM")
+
+## ROC Figure 
+g <- ggplot(pred_obj_1.33$roc_data, aes(m=rGBM, d=factor(obs, levels = c("iGBM", "rGBM")), color=Model)) +
+  geom_roc(n.cuts=0) + 
+  scale_color_manual(values = RColorBrewer::brewer.pal(length(unique(pred_obj_1.33$master_lift$liftModelVar)), "Dark2"), labels=c("Logit", "Elastic Logit", "KNN", "RF")) +
+  coord_equal() +
+  style_roc(x="1 - Specificity", y="Sensitivity")
+
+auc_tbl_1.33 <- as.data.table(calc_auc(g))
+
+g <- g + annotate("text", x=0.70, y=0.45, label=paste("AUC =", round(auc_tbl_1.33[Model=="Logit"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.33$master_lift$liftModelVar)), "Dark2")[1])
+g <- g + annotate("text", x=0.70, y=0.35, label=paste("AUC =", round(auc_tbl_1.33[Model=="Elastic Logit"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.33$master_lift$liftModelVar)), "Dark2")[2])
+g <- g + annotate("text", x=0.70, y=0.25, label=paste("AUC =", round(auc_tbl_1.33[Model=="KNN"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.33$master_lift$liftModelVar)), "Dark2")[3])
+g <- g + annotate("text", x=0.70, y=0.15, label=paste("AUC =", round(auc_tbl_1.33[Model=="RF"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.33$master_lift$liftModelVar)), "Dark2")[4])
+subfigure_1.33 <- g
+
+pred_obj_1.33$roc_data %>%
+  dplyr::rename(ctrl=iGBM, GBM=rGBM) %>%
+  dplyr::mutate(pred=plyr::mapvalues(pred, from=c("iGBM", "rGBM"), to=c("ctrl", "GBM"))) %>%
+  dplyr::mutate(obs=plyr::mapvalues(obs, from=c("iGBM", "rGBM"), to=c("ctrl", "GBM"))) -> tmp_pred_obj_1.33_roc_data
+
+## 4 Protein ----
+train_df_sub <- train_df %>% dplyr::select(class, ASAH1, SYNEMIN, GPNMB, MMP.9)
+pred_obj_1.34 <- run_predictions(train_df_sub, pred_col_prob = "rGBM")
+
+## ROC Figure 
+g <- ggplot(pred_obj_1.34$roc_data, aes(m=rGBM, d=factor(obs, levels = c("iGBM", "rGBM")), color=Model)) +
+  geom_roc(n.cuts=0) + 
+  scale_color_manual(values = RColorBrewer::brewer.pal(length(unique(pred_obj_1.34$master_lift$liftModelVar)), "Dark2"), labels=c("Logit", "Elastic Logit", "KNN", "RF")) +
+  coord_equal() +
+  style_roc(x="1 - Specificity", y="Sensitivity")
+
+auc_tbl_1.34 <- as.data.table(calc_auc(g))
+
+g <- g + annotate("text", x=0.70, y=0.45, label=paste("AUC =", round(auc_tbl_1.34[Model=="Logit"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.34$master_lift$liftModelVar)), "Dark2")[1])
+g <- g + annotate("text", x=0.70, y=0.35, label=paste("AUC =", round(auc_tbl_1.34[Model=="Elastic Logit"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.34$master_lift$liftModelVar)), "Dark2")[2])
+g <- g + annotate("text", x=0.70, y=0.25, label=paste("AUC =", round(auc_tbl_1.34[Model=="KNN"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.34$master_lift$liftModelVar)), "Dark2")[3])
+g <- g + annotate("text", x=0.70, y=0.15, label=paste("AUC =", round(auc_tbl_1.34[Model=="RF"]$AUC, 4)), color=RColorBrewer::brewer.pal(length(unique(pred_obj_1.34$master_lift$liftModelVar)), "Dark2")[4])
+subfigure_1.34 <- g
+
+pred_obj_1.34$roc_data %>%
+  dplyr::rename(ctrl=iGBM, GBM=rGBM) %>%
+  dplyr::mutate(pred=plyr::mapvalues(pred, from=c("iGBM", "rGBM"), to=c("ctrl", "GBM"))) %>%
+  dplyr::mutate(obs=plyr::mapvalues(obs, from=c("iGBM", "rGBM"), to=c("ctrl", "GBM"))) -> tmp_pred_obj_1.34_roc_data
+
+## Merged Plot
+master_Table <- rbindlist(list(`1 Protein`=tmp_pred_obj_1.31_roc_data, `1-2 Proteins`=tmp_pred_obj_1.32_roc_data, `1-3 Proteins`=tmp_pred_obj_1.33_roc_data, `1-4 Proteins`=tmp_pred_obj_1.34_roc_data), idcol = 'Number of Proteins')
+
+
+master_auc_data <- rbindlist(list(`1 Protein`=auc_tbl_1.31, `1-2 Proteins`=auc_tbl_1.32, `1-3 Proteins`=auc_tbl_1.33, `1-4 Proteins`=auc_tbl_1.34), idcol = "Number of Proteins")
+
+
+master_auc_data[Model %in% c("Elastic Logit")] %>%
+  dplyr::mutate(AUC = sprintf("AUC: %s%%", round(AUC*100, 0))) %>%
+  tidyr::pivot_wider(id_cols = "Number of Proteins", names_from = Model, values_from = AUC) -> auc_annotation_tbl
+
+table_theme <- ttheme_minimal(core = list(fg_params=list(col=(RColorBrewer::brewer.pal(5, "Dark2")))), base_size = 13)
+auc_grob <- tableGrob(auc_annotation_tbl, rows=NULL, theme = table_theme)
+
+g <- ggplot(master_Table[Model %in% c("Elastic Logit")], aes(m=GBM, d=factor(obs, levels = c("ctrl", "GBM")), color=`Number of Proteins`), linetype='solid') +
+  geom_roc(n.cuts=0, size=1.5) + 
+  scale_color_manual(values = RColorBrewer::brewer.pal(5, "Dark2")) +
+  # scale_linetype_manual(values=c("solid", "dotted"), labels=c("Elastic Logit")) + 
+  coord_equal() +
+  style_roc(x="1 - Specificity", y="Sensitivity") +
+  annotation_custom(auc_grob, xmin=0.25, xmax=0.95, ymin=0.10, ymax=0.30) +
+  theme(axis.title = element_text(size=16),
+        axis.text = element_text(size=15),
+        legend.title = element_text(size=14),
+        legend.text = element_text(size=13)) +
+  guides(col="none")
+g
+
+```
+
+
 <!-- # Latency Data -->
 ```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=8, fig.width=9, include=FALSE}
 latency_data_file <- "../../data/elisa_plasma_proteomics/ELISA_LATENCY_KM.csv"
@@ -2960,7 +3628,7 @@ ttr_surv_p1 <- ttr_surv_p1$plot +
         legend.spacing.x = unit(0.25, 'cm'),
         legend.position = "bottom")
 
-fit <- survfit(Surv(Time.to.reccurence..days., status) ~ SYNM, data = ttr_surv_data)
+fit <- survfit(Surv(Time.to.reccurence..days., status) ~ SYNM, data = ttr_surv_data %>% dplyr::select(-MMP.9.ng.ml))
 print(fit)
 n_data <- table(ttr_surv_data[!is.na(ttr_surv_data$Time.to.reccurence..days.)]$SYNM)
 # Change color, linetype by strata, risk.table color by strata
@@ -3046,6 +3714,65 @@ ttr_surv_p5 <- ggsurvplot(fit,
           legend.labs = c(sprintf("ASAH1=high, SYNM=high (n=%s)", fit$n.risk[1]), sprintf("ASAH1=high, SYNM=low (n=%s)", fit$n.risk[fit$n.risk[1]+1]), sprintf("ASAH1=low, SYNM=high (n=%s)", fit$n.risk[fit$n.risk[1]+1+fit$n.risk[fit$n.risk[1]+1]]), sprintf("ASAH1=low, SYNM=low (n=%s)", fit$n.risk[fit$n.risk[1]+1+fit$n.risk[fit$n.risk[1]+1]+fit$n.risk[fit$n.risk[1]+1+fit$n.risk[fit$n.risk[1]+1]]]))
           ) +
   labs(x="Time to Recurrence (Days)", y="Time to Recurrence probability")  +
+  guides(col=guide_legend(nrow=1,byrow=TRUE))
+
+ttr_surv_p5 <- ttr_surv_p5$plot +
+  theme(axis.title = element_text(size=16),
+        axis.text = element_text(size=15),
+        legend.text = element_text(size=12),
+        legend.spacing.x = unit(0.25, 'cm'),
+        legend.position = "bottom")
+
+ttr_surv_p5_with_ci <- ggsurvplot(fit,
+          pval = TRUE, pval.coord = c(650, 0.85), conf.int = T,
+          risk.table = FALSE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          linetype = "strata", # Change line type by groups
+          surv.median.line = "hv", # Specify median survival
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          legend.title = "",
+          legend.labs = c(sprintf("ASAH1=high, SYNM=high\n(n=%s)", fit$n.risk[1]), sprintf("ASAH1=high, SYNM=low\n(n=%s)", fit$n.risk[fit$n.risk[1]+1]), sprintf("ASAH1=low, SYNM=high\n(n=%s)", fit$n.risk[fit$n.risk[1]+1+fit$n.risk[fit$n.risk[1]+1]]), sprintf("ASAH1=low, SYNM=low\n(n=%s)", fit$n.risk[fit$n.risk[1]+1+fit$n.risk[fit$n.risk[1]+1]+fit$n.risk[fit$n.risk[1]+1+fit$n.risk[fit$n.risk[1]+1]]]))
+          ) +
+  labs(x="Time to Recurrence (Days)", y="Time to Recurrence probability")  +
+  guides(col=guide_legend(nrow=2,byrow=TRUE))
+
+ttr_surv_p5_with_ci <- ttr_surv_p5_with_ci$plot +
+  theme(axis.title = element_text(size=16),
+        axis.text = element_text(size=15),
+        legend.text = element_text(size=12),
+        legend.spacing.x = unit(0.25, 'cm'),
+        legend.position = "bottom")
+
+
+## All 4
+fit <- survfit(Surv(Time.to.reccurence..days., status) ~ ASAH1 + SYNM + GPNMB + MMP9, data = ttr_surv_data)
+print(fit)
+# Change color, linetype by strata, risk.table color by strata
+ttr_surv_p5 <- ggsurvplot(fit,
+          pval = TRUE, pval.coord = c(650, 0.85), conf.int = F,
+          risk.table = FALSE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          linetype = "strata", # Change line type by groups
+          surv.median.line = "hv", # Specify median survival
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          legend.title = "",
+          legend.labs = c(
+            sprintf("ASAH1=high, SYNM=high, GPNMB=high, MMP9=high (n=1)"), 
+            sprintf("ASAH1=high, SYNM=low, GPNMB=high, MMP9=low (n=1)"),  
+            sprintf("ASAH1=low, SYNM=high, GPNMB=low , MMP9=high (n=2)"), 
+            sprintf("ASAH1=high, SYNM=high, GPNMB=low , MMP9=low (n=1)"),
+            sprintf("ASAH1=high, SYNM=low , GPNMB=high, MMP9=low (n=1)"),
+            sprintf("ASAH1=high, SYNM=low , GPNMB=low , MMP9=high (n=1)"),
+            sprintf("ASAH1=high, SYNM=low , GPNMB=low , MMP9=low (n=2)"),
+            sprintf("ASAH1=low, SYNM=high, GPNMB=high, MMP9=high (n=1)"),
+            sprintf("ASAH1=low, SYNM=high, GPNMB=high, MMP9=low (n=1)"),
+            sprintf("ASAH1=low, SYNM=high, GPNMB=low , MMP9=high (n=2)"),
+            sprintf("ASAH1=low, SYNM=low , GPNMB=high, MMP9=low (n=3)"),
+            sprintf("ASAH1=low, SYNM=low , GPNMB=low , MMP9=high (n=1)"),
+            sprintf("ASAH1=low, SYNM=low , GPNMB=low , MMP9=low (n=2)")
+            )
+          ) +
+  labs(x="Time to Recurrence (Days)", y="Time to Recurrence probability")  +
   guides(col=guide_legend(nrow=4,byrow=TRUE))
 
 ttr_surv_p5 <- ttr_surv_p5$plot +
@@ -3074,6 +3801,38 @@ ttr_surv_p5_with_ci <- ttr_surv_p5_with_ci$plot +
         legend.text = element_text(size=12),
         legend.spacing.x = unit(0.25, 'cm'),
         legend.position = "bottom")
+
+## COXPH
+fit <- coxph(Surv(Time.to.reccurence..days., status) ~ sex + ASAH1.ng.ml + SYNM.ng.ml + GPNMB.ng.ml + MMP.9.ng.ml, data = ttr_surv_data)
+print(summary(fit))
+
+library(finalfit)
+
+dependent_var <- "Surv(Time.to.reccurence..days., status)"
+explanatory_vars <- c("ASAH1.ng.ml", "SYNM.ng.ml", "GPNMB.ng.ml", "MMP.9.ng.ml")
+
+ttr_surv_data %>% 
+    coxphmulti(dependent_var, explanatory_vars) %>% 
+    cox.zph() %>% 
+    {zph_result <<- .} %>% 
+    plot(var=3)
+
+zph_result
+
+ttr_surv_data %>%
+  finalfit(dependent_var, explanatory_vars) %>%
+  gt()
+  
+
+ttr_surv_data %>%
+  hr_plot(dependent_var, explanatory_vars, dependent_label="Time to Recurrence")
+
+ttr_surv_data %>%
+  surv_plot(dependent_var, explanatory_vars, xlab="Time (days)", pval=TRUE, legend="none")
+
+
+ttr_surv_data %>%
+  ff_plot(dependent_var, explanatory_vars, dependent_label="Time to Recurrence")
 ```
 
 \blandscape
