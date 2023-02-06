@@ -3744,7 +3744,7 @@ ttr_surv_p5_with_ci <- ttr_surv_p5_with_ci$plot +
         legend.position = "bottom")
 
 
-## All 4
+## All 4 ----
 fit <- survfit(Surv(Time.to.reccurence..days., status) ~ ASAH1 + SYNM + GPNMB + MMP9, data = ttr_surv_data)
 print(fit)
 # Change color, linetype by strata, risk.table color by strata
@@ -3802,7 +3802,7 @@ ttr_surv_p5_with_ci <- ttr_surv_p5_with_ci$plot +
         legend.spacing.x = unit(0.25, 'cm'),
         legend.position = "bottom")
 
-## COXPH
+## COXPH ----
 fit <- coxph(Surv(Time.to.reccurence..days., status) ~ sex + ASAH1.ng.ml + SYNM.ng.ml + GPNMB.ng.ml + MMP.9.ng.ml, data = ttr_surv_data)
 print(summary(fit))
 
