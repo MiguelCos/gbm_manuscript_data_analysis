@@ -2,13 +2,14 @@
 title: "GBM recurrence - Shotgun proteomics analysis"
 author: "Miguel Cosenza-Contreras"
 format:
-  gfm: 
+  gfm:
+    toc: true 
     toc-depth: 4 # default is 3
     number-sections: true
     execute:
       output: true
 always_allow_html: true
-editor: visual
+editor: source
 ---
 
 ```{r knirt_helper_funcs}
