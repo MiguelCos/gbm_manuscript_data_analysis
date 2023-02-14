@@ -4,11 +4,9 @@ author: "Miguel Cosenza-Contreras"
 format:
   gfm: 
     toc-depth: 4 # default is 3
-    toc-title: Contents
-    toc-location: left # default is right, option is 'body'
     number-sections: true
-    number-depth: 3
-    embed-resources: true
+    execute:
+      output: true
 always_allow_html: true
 editor: visual
 ---
