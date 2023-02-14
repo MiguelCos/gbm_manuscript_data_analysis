@@ -1,0 +1,2131 @@
+---
+title: "GBM recurrence - Shotgun proteomics analysis"
+author: "Miguel Cosenza-Contreras"
+format:
+  gfm: 
+    toc-depth: 4 # default is 3
+    toc-title: Contents
+    toc-location: left # default is right, option is 'body'
+    number-sections: true
+    number-depth: 3
+    embed-resources: true
+always_allow_html: true
+editor: visual
+---
+
+```{r knirt_helper_funcs}
+knitr::opts_chunk$set(echo = TRUE, 
+                      message = FALSE, 
+                      warning = FALSE)
+
+source(here::here("scr/helper_functions.R"))
+```
+
+```{r load_packages}
+## Required packages ----
+library(tidyverse)
+library(mixOmics)
+library(fs)
+library(kableExtra)
+library(sva)
+library(limma)
+library(naniar)
+library(missForest)
+library(clusterProfiler)
+library(ReactomePA)
+library(org.Hs.eg.db)
+library(DT)
+library(here)
+library(janitor)
+library(drawProteins)
+library(seqinr)
+library(ggpubr)
+library(ggrepel)
+library(extrafont)
+```
+
+```{r theme_set}
+theme_set(theme(axis.text.x = element_text(hjust = 0.5, 
+                                           vjust = 0, 
+                                           size = 6, 
+                                           angle = 360),
+                axis.text.y = element_text(hjust = 0.5, 
+                                           vjust = 0, 
+                                           size = 6),
+                panel.background = element_blank(),
+                panel.grid.major = element_line(color = "grey"),
+                panel.border = element_rect(colour = "black", 
+                                            fill = NA, 
+                                            size = 1.5),
+                axis.title=element_text(size = 8),
+                legend.title = element_text(size = 8),
+                legend.key.height = unit(3, 
+                                         'mm'),
+                legend.key.width = unit(3, 
+                                        'mm'),
+                legend.position = "bottom"))
+```
+
+The following report holds the code, results and interpretation of the proteomics data analysis of Initial-Recurrent glioblastoma (GBM) samples of matched patients.
+
+# Sample annotation info
+
+```{r echo=TRUE}
+sample_annotation <- read_csv(here("data/sample_annotation.csv"))
+
+# correct annotation
+
+sample_annotation2 <- sample_annotation %>%
+  mutate(patient = paste("x",
+                         patient,
+                         sep = ""),
+         recurrence = case_when(recurrence == "initial" ~ "prim",
+                                recurrence == "recurrent" ~ "rec",
+                                TRUE ~ recurrence)) %>%
+  mutate(paired_id = paste(patient, 
+                           recurrence, 
+                           sep = "_")) %>%
+  filter(recurrence %in% c("prim", 
+                           "rec"))
+
+sample_annotationwo6 <- sample_annotation2 %>%
+  filter(patient != "x6")
+```
+
+## Sample annotation
+
+### Brief note on sample annotation: {.unnumbered .unlisted}
+
+Twenty-two patient matched samples (corresponding to 11 patients) were processed for protein extraction, TMT-labelled and submitted via high-pH fractionation and further analyzed via LC-MS/MS.
+
+```{r echo=FALSE, error=TRUE}
+kbl(sample_annotation, booktabs = TRUE) %>%
+  kable_styling(font_size = 14, 
+                bootstrap_options = c("striped", 
+                                      "hover"))
+```
+
+# Brief note on data analysis and processing:
+
+Three proteomics data analysis approaches were used to explore the spectral data and will be briefly described:
+
+1.  General large scale proteomics.
+2.  Proteolytic processing.
+3.  Proteogenomics
+
+The FragPipe bioinformatic pipeline was used for each of these approaches with varying parameters depending on the type of explorative approach.
+
+**This report holds the code, analysis, visualizations and results for the General large scale proteomics approach.**
+
+**1. General large scale proteomics analyses** : In order to explore the differential abundance of proteins between Recurrent and Initial tumor, a fully-tryptic search was performed against the EBI Human canonical proteome (version 2021_03), appended with common contaminants and iRT peptides. A minimum percentage of %5 of the total summed reporter ion intensities were required to consider a peptide and reporter ion for quantitation.
+
+**2. Proteolytic processing**: The large scale evaluation of differential proteolytic activity between recurrent vs primary tumor was executed via a semi-tryptic search against the EBI Human canonical proteome (version 2021_03), appended with common contaminants and iRT peptides. A minimum percentage of %5 of the total summed reporter ion intensities were required to consider a peptide and reporter ion for quantitation.
+
+**3. Proteogenomics**: The explorative proteogenomics analysis started with the generation of a GBM-specific database from publicly available RNA-seq sequencing data from tumor specimens. Fastq files were obtain from the SRA BioProject PRJNA627121 (Cell Rep, 2021 Mar 2;34(9):108787). Eight samples containing paired reads were selected, based on: 1) the higher number of reads per file; 2) having a similar proportion of males and females and 3) not bearing isocitrate-dehyderogenase (IDH)-1 mutation (IDH WT). None of these patients undergo previous treatment, therefore potential variants in the sequencing data are not expected to be associated to treatment-related mutagenic processes. Spectral data was then searched against this custom database using a fully-tryptic approac. No minimum intensity threshold was set for reporter ion intensity for quantitation.
+
+Exceptionally when stated differently within each sub-approach described above, all these searches were executed using the following parameters: MSFragger was used as a search engine, setting a fully or semi-tryptic specificity allowing for 1 missed cleavages. Precursor mass tolerance was set to -20/20 and fragment mass tolerance of 20 ppm with mass calibration and parameter optimization resulting in 5 ppm. Peptide N-terminal acetylation and peptide N-terminal TMT labeling were set as variable modifications. TMT labelling at K and carbamidomethylation of C were set as fixed modifications. MSBooster was used for deep-learning based predictions of retention time and spectra. Predicted features were used by Percolator for post-processing scoring and false discovery rate (FDR) control via target-decoy competition of all peptide-to-spectrum matches (PSMs) obtained from MSFragger search. ProteinProphet was used as a protein inference algorithm keeping all PSMs with probability score bigger than 0.9. Final report and FDR estimation was based on the filtered PSM and protein lists before protein scoring.
+
+Relative quantitation of identified peptides within each sample was performed via their reported ion intensities using TMT-integrator. Only PSMs coming from unique peptides with a minimum probability of 0.9 and an isotopic purity of at least 50% were considered for quantitation. Quantitative values were normalized via median centering and summarized by protein/gene and peptide using a virtual reference channel, to finally generate protein and peptide normalized abundance matrices of abundance used for further statistical processing in combination with the sample annotation.
+
+# Initial data loading and wrangling {.unnumbered .unlisted}
+
+```{r message=FALSE}
+## tmt-integrator output loading 
+tmt_protdata_frag <- read_tsv(here("data/specific_search_fragpipe17/specific_no_ptms_2/tmt-report/abundance_protein_MD.tsv")) %>% 
+  janitor::clean_names()
+
+identified_proteins <- read_tsv(here("data/specific_search_fragpipe17/specific_no_ptms_2/combined_protein.tsv")) %>% 
+  janitor::clean_names()
+
+identified_peptides <- read_tsv(here("data/specific_search_fragpipe17/specific_no_ptms_2/combined_peptide.tsv")) %>%
+  janitor::clean_names()
+
+fasta_ident_prots <- read.fasta(here("data/specific_search_fragpipe17/specific_no_ptms_2/mix_2/protein.fas"), seqtype = "AA", as.string = TRUE)
+```
+
+```{r}
+# wide expression matrix with NAs
+expr_matrix <- dplyr::select(tmt_protdata_frag,
+                             Protein = index, 
+                             starts_with("x"))
+
+long_mat <- pivot_longer(expr_matrix,
+                         cols = starts_with("x"),
+                         names_sep = "_",
+                         names_to = c("patient", 
+                                      "recurrence"),
+                         values_to = "Abundance")
+
+long_mat_2 <- long_mat %>%
+  mutate(paired_id = paste(patient, 
+                           recurrence, 
+                           sep = "_"))
+
+paired_annot_uniq <- long_mat_2 %>%
+  dplyr::select(patient, 
+                recurrence, 
+                paired_id) %>%
+  distinct()
+
+# correct annotation
+
+sample_annotation2 <- sample_annotation %>%
+  mutate(patient = paste("x", 
+                         patient, 
+                         sep = ""),
+         recurrence = case_when(recurrence == "initial" ~ "prim",
+                                recurrence == "recurrent" ~ "rec",
+                                TRUE ~ recurrence)) %>%
+  mutate(paired_id = paste(patient, 
+                           recurrence, 
+                           sep = "_")) %>%
+  filter(recurrence %in% c("prim", 
+                           "rec"))
+
+## Annotated abundance data in long format ----
+
+quant_annotated <- left_join(long_mat_2,
+                             sample_annotation2, 
+                             by = c("paired_id", 
+                                    "patient",
+                                    "recurrence")) %>%
+  mutate(Channel_mix = paste(mixture, 
+                             channel,  
+                             sep = "_"))
+
+## Wide xpression matrices without NAs
+expr_matnona <- column_to_rownames(expr_matrix,
+                                   "Protein") %>%
+          as.matrix() %>%
+          na.omit()
+```
+
+# ID Coverage before sparicity reduction and filtering
+
+These numbers are based on the results from the output of FragPipe's TMT-integrator, before sparicity reduction and filtering.
+
+```{r}
+ids_summary <- quant_annotated %>% 
+  dplyr::select(Protein, mixture, Abundance) %>% 
+  distinct(Protein, mixture, .keep_all = TRUE) %>%
+  group_by(mixture) %>%
+  summarise(`Nr of IDs` = sum(!is.na(Abundance))) %>% 
+  bind_rows(.,
+            tibble(mixture = "In all three",
+                   `Nr of IDs` = nrow(expr_matnona))) %>%
+  bind_rows(.,
+            tibble(mixture = "Overall",
+                   `Nr of IDs` = nrow(expr_matrix)))
+```
+
+-   Number of identified proteins: `r nrow(expr_matrix)`
+
+-   Number of identified and quantified proteins in all samples: `r nrow(expr_matnona)`
+
+```{r fig.height=4, fig.width=7, warning=FALSE}
+ggplot(data = ids_summary,
+       aes(y = `Nr of IDs`, x = mixture)) +
+  geom_col(fill = "#008683") + 
+  geom_text(size = 5, 
+            position = position_stack(vjust = 0.5), 
+            aes(label = `Nr of IDs`)) +
+  coord_cartesian(ylim = c(0, 5000))+
+  coord_flip() +
+  labs(title = "Number of Identified and quantified Proteins by Mixture") +
+  ylab("Nr of IDed and Quant Proteins") + 
+  xlab("TMT Mixture") + 
+  theme(axis.text.x = element_text(hjust = 0.5, 
+                                   vjust = 0.1, 
+                                   size = 10, 
+                                   angle = 0),
+        axis.text.y = element_text(hjust = 0.5, 
+                                   vjust = 0.1, 
+                                   size = 10, 
+                                   angle = 0),
+        panel.background = element_blank(),
+        panel.grid.major = element_line(color = "grey"),
+        panel.border = element_rect(colour = "black", 
+                                    fill = NA, 
+                                    size = 1.5),
+        axis.title = element_text(size = 12,
+                                face = "bold"))
+```
+
+# Exploratory analysis
+
+## Visualization of missing values
+
+```{r fig.height=7, fig.width=8, warning=FALSE}
+vis_miss(expr_matrix) + 
+          ggtitle("Distribution of missing values") + 
+          theme(axis.text.x = element_text(hjust = 0.5, 
+                                           vjust = 0.1, 
+                                           size = 10, 
+                                           angle = 90),
+                axis.text.y = element_text(hjust = 0.5, 
+                                           vjust = 0.1, 
+                                           size = 10),
+                panel.background = element_blank(),
+                panel.grid.major = element_line(color = "grey"),
+                panel.border = element_rect(colour = "black", 
+                                            fill=NA, 
+                                            size=1.5),
+                axis.title = element_text(size = 12,
+                                        face = "bold"))
+```
+
+There is an uneven distribution of missingness between TMT-batches.
+
+## Plots of normalized abundance distribution
+
+### Normalized ion reporter abundance distribution by TMT channel/sample {.unnumbered}
+
+```{r fig.height=4, fig.width=7, warning=FALSE}
+ggplot(quant_annotated,
+                 mapping = aes(x = Channel_mix, 
+                               y = Abundance, 
+                               fill = recurrence)) +
+          geom_boxplot() + 
+          theme(axis.text.x = element_text(hjust = 0.5, 
+                                           vjust = 0.1, 
+                                           size = 10, 
+                                           angle = 90),
+                axis.text.y = element_text(hjust = 0.5, 
+                                           vjust = 0.1, 
+                                           size = 10),
+                panel.background = element_blank(),
+                panel.grid.major = element_line(color = "grey"),
+                panel.border = element_rect(colour = "black", 
+                                            fill = NA, 
+                                            size = 1.5),
+                axis.title = element_text(size = 12,
+                                         face = "bold"))
+```
+
+The median-centering after TMT-integrator seem to show a slight mixture-dependent centered median per sample. The paired distribution of initial and recurrent tumor allows the biological effect to be more important than any potential TMT-mixture-based batch effect.
+
+The different abundance distribution can also be explained by a different distribution of missing values.
+
+PCA and sPLS-DA analysis allow to confirm this.
+
+### Normalized ion reporter abundance distribution by protein {.unnumbered}
+
+Select/sample *N* proteins to observe their abundance distributio.
+
+```{r}
+which_prots <- sample_proteins(x = quant_annotated$Protein,
+                               size = 50,
+                               seed = 156)
+```
+
+`r length(which_prots)` proteins were randomly sampled to check for the normality of their 'normalized' Abundance distribution.
+
+```{r fig.height=4, fig.width=7, warning=FALSE}
+ggplot(quant_annotated %>% 
+          filter(Protein %in% which_prots),
+                 mapping = aes(x = reorder(Protein,
+                                           Abundance,
+                                           na.rm = TRUE), 
+                               y = Abundance)) +
+          geom_boxplot() + 
+          geom_jitter(color = "black", 
+                      size = 0.4, 
+                      alpha = 0.9) +
+          labs(subtitle = "Protein IDs arranged by median abudance",
+               x = "Protein ID ") + 
+          theme(axis.text.x = element_text(hjust = 0.5, 
+                                           vjust = 0.1, 
+                                           size = 10, 
+                                           angle = 90),
+                axis.text.y = element_text(hjust = 0.5, 
+                                           vjust = 0.1, 
+                                           size = 10),
+                panel.background = element_blank(),
+                panel.grid.major = element_line(color = "grey"),
+                panel.border = element_rect(colour = "black", fill=NA, size=1.5),
+                axis.title=element_text(size=12,face="bold"))
+
+```
+
+### Normalized ion reporter abundance distribution by protein and batch {.unnumbered}
+
+`r length(which_prots)` proteins were randomly sampled to check for the normality of their 'normalized' Abundance distribution.
+
+```{r fig.height=4, fig.width=9, warning=FALSE}
+ggplot(quant_annotated %>% 
+                         filter(Protein %in% which_prots),
+                 mapping = aes(x = reorder(Protein,
+                                           Abundance,
+                                           na.rm = TRUE), 
+                               y = Abundance, 
+                               fill = mixture)) +
+          geom_boxplot() + 
+          geom_jitter(color = "black", 
+                      size = 0.4, 
+                      alpha = 0.9) +
+          labs(subtitle = "Protein IDs arranged by median abudance",
+                       x = "Protein ID ") + 
+          facet_grid(.~mixture, 
+                     scales = "free") +
+          theme(axis.text.x = element_text(hjust = 0.5, 
+                                           vjust = 0.1, 
+                                           size = 10, 
+                                           angle = 90),
+                axis.text.y = element_text(hjust = 0.5, 
+                                           vjust = 0.1, 
+                                           size = 10),
+                panel.background = element_blank(),
+                panel.grid.major = element_line(color = "grey"),
+                panel.border = element_rect(colour = "black", 
+                                            fill = NA, 
+                                            size = 1.5),
+                axis.title = element_text(size = 12,
+                                          face = "bold"))
+```
+
+The abundance distribution of individual proteins can be considered as normaly distributed in general, which makes then suitable for inferential statistics via linear models.
+
+## Exploratory PCA
+
+```{r echo=FALSE}
+## Get predictors for mixtures
+expr_matrix2 <- expr_matrix %>%
+  dplyr::select(Protein, 
+                sample_annotation2$paired_id) 
+
+paired_id <- sample_annotation2$paired_id
+recurrence <- sample_annotation2$recurrence
+patient <- sample_annotation2$patient
+mixture <- sample_annotation2$mixture
+
+## get predictor for mixtures wo patient 6
+expr_matrixwo6 <- expr_matrix %>%
+  dplyr::select(Protein, 
+                sample_annotationwo6$paired_id) 
+
+paired_idwo6 <- sample_annotationwo6$paired_id
+recurrencewo6 <- sample_annotationwo6$recurrence
+patientwo6 <- sample_annotationwo6$patient
+mixturewo6 <- sample_annotationwo6$mixture
+
+## Prep matrix without missing values for PCA
+
+expr_matnona <- column_to_rownames(expr_matrix2,
+                                   "Protein") %>%
+          as.matrix() %>%
+          na.omit()
+
+colnames(expr_matnona) <- paste(sample_annotation2$paired_id, 
+                                sample_annotation2$mixture,
+                                sep = "_")
+
+t_expr_matnona <- t(expr_matnona)
+
+expr_mat <- column_to_rownames(expr_matrix2,
+                               "Protein") %>%
+          as.matrix() 
+
+t_expr_mat <- t(expr_mat)
+
+## Matrix without patient 6 
+
+expr_matnonawo6 <- column_to_rownames(expr_matrixwo6,
+                                      "Protein") %>%
+          as.matrix() %>%
+          na.omit()
+
+colnames(expr_matnonawo6) <- paste(sample_annotationwo6$paired_id, 
+                                   sample_annotationwo6$mixture,
+                                   sep = "_")
+
+t_expr_matnonawo6 <- t(expr_matnonawo6)
+
+expr_matwo6 <- column_to_rownames(expr_matrixwo6,
+                                  "Protein") %>%
+          as.matrix() 
+
+t_expr_matwo6 <- t(expr_matwo6)
+```
+
+## Percentage of explained variance per component {.unnumbered .unlisted}
+
+The PCA was applied on the expression matrix without missing values
+
+```{r}
+pca_res <- pca(t_expr_matnona, 
+               ncomp = 10, 
+               center = TRUE, 
+               scale = TRUE)
+```
+
+```{r fig.width=4.7, fig.height=3.5}
+plot(pca_res)
+```
+
+\~45% of variance based on protein abundance can be explained by components 1 and 2 after PCA.
+
+## PCA plot on samples based on protein abundance
+
+```{r}
+# preprocess pca results 
+pca_variates <- pca_res$variates$X %>% 
+  as.data.frame() %>%
+  rownames_to_column("Sample") %>%
+  separate(col = "Sample",
+           into = c("sample", 
+                    "recurrence", 
+                    "mixture"),
+           sep = "\\_", 
+           extra = "merge") %>%
+  mutate(paired_id = paste(sample, 
+                           recurrence, 
+                           sep = "_")) %>%
+  dplyr::select(-c(mixture, 
+                   recurrence)) %>%
+  left_join(. , sample_annotation2,
+            by = "paired_id") %>%
+  mutate(Stage = if_else(condition = recurrence == "prim", 
+                         true = "Initial", 
+                         false = "Recurrent"),
+         Mix = case_when(mixture == "tmt_1" ~ "Mix1",
+                         mixture == "tmt_2" ~ "Mix2",
+                         mixture == "tmt_3" ~ "Mix3"))
+
+pca_variateswopat6 <- pca_variates %>% 
+  filter(patient != "x6")
+```
+
+```{r fig.width=5, fig.height=4, warning=FALSE}
+ggplot(data = pca_variates,
+       aes(x = PC1, 
+           y = PC2)) +
+  geom_point(size = 4, aes(shape = mixture, 
+                           color = recurrence)) +  
+  geom_text(aes(label = patient), 
+            position = position_nudge(x = 4.5)) +
+  labs(title = "PCA plot of samples\nBased on the abundance values of proteins") +
+  xlab(paste("PC1", 
+             round(pca_res$prop_expl_var$X[1]*100), 
+             "% var explained")) + 
+  ylab(paste("PC2", 
+             round(pca_res$prop_expl_var$X[2]*100), 
+             "% var explained")) + 
+  theme(axis.text.x = element_text(hjust = 0.5, 
+                                   vjust = 0, 
+                                   size = 10, 
+                                   angle = 360),
+        axis.text.y = element_text(hjust = 0.95, 
+                                   vjust = 0.2, 
+                                   size = 10),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.border = element_rect(colour = "black", 
+                                    fill=NA, 
+                                    size=0.5),
+        axis.title = element_text(size = 10),
+        legend.text = element_text(size = 7),
+        legend.title = element_text(size = 8),
+        legend.key.height= unit(3, 'mm'),
+        legend.key.width= unit(3, 'mm'),
+        legend.position="bottom")
+```
+
+There is no evident batch effect after PCA analysis.
+
+There is a good number of individual patients that show important differences in their PCA variates values in recurrent vs primary.
+
+```{r fig.width=5.8, fig.height=4, warning=FALSE}
+ggplot(data = pca_variateswopat6,
+       aes(x = PC1, y = PC2)) +
+  geom_point(size = 4, aes(shape = mixture, 
+                           color = recurrence)) +  
+  geom_text(aes(label = patient), 
+            position = position_nudge(x = 4.5)) +
+  labs(title = "PCA plot of samples\nBased on the abundance values of proteins (patient 6 excluded)") +
+  xlab(paste("PC1", 
+             round(pca_res$prop_expl_var$X[1]*100), 
+             "% var explained")) + 
+  ylab(paste("PC2", 
+             round(pca_res$prop_expl_var$X[2]*100), 
+             "% var explained")) + 
+  theme(axis.text.x = element_text(hjust = 0.5, 
+                                   vjust = 0, 
+                                   size = 10, 
+                                   angle = 360),
+        axis.text.y = element_text(hjust = 0.95, 
+                                   vjust = 0.2, 
+                                   size = 10),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.border = element_rect(colour = "black", 
+                                    fill=NA, 
+                                    size=0.5),
+        axis.title = element_text(size = 10),
+        legend.text = element_text(size = 7),
+        legend.title = element_text(size = 8),
+        legend.key.height= unit(3, 'mm'),
+        legend.key.width= unit(3, 'mm'),
+        legend.position="bottom")
+```
+
+```{r pca_proteomics_figure}
+pca_plot <- ggplot(data = pca_variateswopat6,
+       aes(x = PC1, 
+           y = PC2)) +
+  geom_point(size = 4, aes(shape = Mix, 
+                           color = Stage)) +  
+  geom_text(aes(label = patient), 
+            position = position_nudge(x = 4.5), 
+            size = 2) +
+  xlab(paste("PC1", 
+             round(pca_res$prop_expl_var$X[1]*100), 
+             "% var explained")) + 
+  ylab(paste("PC2", 
+             round(pca_res$prop_expl_var$X[2]*100), 
+             "% var explained")) +
+theme(axis.text.x = element_text(hjust = 0.5, 
+                                 vjust = 0, 
+                                 size = 7,
+                                 angle = 360),
+      axis.text.y = element_text(hjust = 0.95, 
+                                 vjust = 0.2,
+                                 size = 7),
+      panel.background = element_blank(),
+      panel.grid.major = element_blank(),
+      panel.border = element_rect(colour = "black", 
+                                  fill=NA, 
+                                  size=0.5),
+      axis.title = element_text(size = 7),
+      legend.text = element_text(size = 7),
+      legend.title = element_text(size = 8),
+      legend.key.height= unit(3, 'mm'),
+      legend.key.width= unit(3, 'mm'),
+      legend.position="bottom")
+
+ggsave(plot = pca_plot, 
+       filename = here::here("figures/pca_proteomics_gbm.tiff"), 
+       device = "tiff",
+       units = "mm",
+       width = 63,
+       height = 50)
+
+ggsave(plot = pca_plot, 
+       filename = here::here("figures/pca_proteomics_gbm.eps"), 
+       device = "eps",
+       units = "mm",
+       width = 63,
+       height = 50)
+```
+
+## Exploratory sPLS-DA
+
+```{r}
+plsda_rest1 <- plsda(X = t_expr_matnona,
+                     Y = recurrence,
+                     ncomp = 3)
+```
+
+```{r fig.width=5, fig.height=4}
+plotIndiv(plsda_rest1,
+          nd.names = TRUE, 
+          ellipse = TRUE, 
+          legend = FALSE, 
+          title = "sPLS-DA_Rec-Prim", 
+          size.title = rel(1.5), 
+          size.xlabel = rel(1.5), 
+          size.ylabel = rel(1.5), 
+          siz.axis = rel(1.2), 
+          point.lwd = 0.8, 
+          cex = 3)  
+```
+
+Patient 6 in recurrence behaves suspiciously similar to initial samples. We consider this to be an outlier associated to a potential problem during sample prep.
+
+Therefore we decided to exclude patient 6 from inferential analyses.
+
+### sPLS-DA excluding 'patient 6' {.unnumbered .unlisted}
+
+```{r}
+plsda_restwo6 <- plsda(X = t_expr_matnonawo6,
+                       Y = recurrencewo6,
+                       ncomp = 3)
+```
+
+```{r fig.width=5, fig.height=4}
+plotIndiv(plsda_restwo6,
+          nd.names = TRUE, 
+          ellipse = TRUE, 
+          legend = FALSE, 
+          title = "sPLS-DA_Rec-Prim wo Pat6", 
+          size.title = rel(1.5), 
+          size.xlabel = rel(1.5), 
+          size.ylabel = rel(1.5), 
+          siz.axis = rel(1.2), 
+          point.lwd = 0.8, 
+          cex = 3)  
+```
+
+### GGplot-based visualization of Exploratory sPLS-DA {.unnumbered .unlisted}
+
+```{r}
+# preprocess pca results 
+plsda_variates <- plsda_restwo6$variates$X %>% 
+  as.data.frame() %>%
+  rownames_to_column("Sample") %>%
+  separate(col = "Sample",
+           into = c("sample", 
+                    "recurrence", 
+                    "mixture"),
+           sep = "\\_", 
+           extra = "merge") %>%
+  mutate(paired_id = paste(sample, 
+                           recurrence, 
+                           sep = "_")) %>%
+  dplyr::select(-c(mixture, 
+                   recurrence)) %>%
+  left_join(. , sample_annotation2,
+            by = "paired_id") 
+```
+
+```{r fig.width=5.5, fig.height=4.5, warning=FALSE}
+ggplot(data = plsda_variates,
+       aes(x = comp1, 
+           y = comp2)) +
+  geom_point(size = 4, aes(shape = mixture, 
+                           color = recurrence)) +  
+  geom_text(aes(label = patient), 
+            position = position_nudge(x = 2)) +
+  labs(title = "sPLS-DA plot of samples - pat6 excluded \nBased on the abundance values of proteins") +
+  xlab(paste("sPLS-DA Comp-1", 
+             round(plsda_restwo6$prop_expl_var$X[1]*100), 
+             "% var explained")) + 
+  ylab(paste("sPLS-DA Comp-2", 
+             round(plsda_restwo6$prop_expl_var$X[2]*100), 
+             "% var explained")) + 
+  ggforce::geom_mark_ellipse(mapping = aes(color = recurrence)) +
+  theme(axis.text.x = element_text(hjust = 0.5, 
+                                   vjust = 0, 
+                                   size = 10, 
+                                   angle = 360),
+        axis.text.y = element_text(hjust = 0.95, 
+                                   vjust = 0.2, 
+                                   size = 10),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.border = element_rect(colour = "black", 
+                                    fill=NA, 
+                                    size=0.5),
+        axis.title = element_text(size = 10),
+        legend.text = element_text(size = 7),
+        legend.title = element_text(size = 8),
+        legend.key.height= unit(3, 'mm'),
+        legend.key.width= unit(3, 'mm'),
+        legend.position="bottom")
+```
+
+The difference between initial and recurrent tumor is better resolved in the sPLS-DA plot when excluding patient 6.
+
+## Sparcity reduction
+
+Only proteins that were identified and quantified in 2 out of 3 TMT mixtures were kept for the inferential analysis. The proteins missing in 1 mixture were imputed with `missForest`.
+
+```{r}
+# sel_proteins_missing function is listed in the helper functions
+proteins2exclude <- sel_proteins_missing(quant_annotated,
+                                         threshold = 1)
+```
+
+Exclude proteins from initial abundance matrix.
+
+```{r}
+expr_matrix_filt <- expr_matrix2 %>%
+  filter(!Protein %in% proteins2exclude)
+```
+
+### Missing values before and after filtering {.unnumbered .unlisted}
+
+```{r}
+nofiltnas_plot <- vis_miss(expr_matrix) + 
+          ggtitle("Distribution of missing values",
+                  subtitle = paste("All quant proteins. Total =", 
+                                   nrow(expr_matrix))) + 
+          theme(axis.text.x = element_text(hjust = 0.5, 
+                                           vjust = 0.1, 
+                                           size = 10, 
+                                           angle = 90),
+                axis.text.y = element_text(hjust = 0.5, 
+                                           vjust = 0.1, 
+                                           size = 10),
+                panel.background = element_blank(),
+                panel.grid.major = element_line(color = "grey"),
+                panel.border = element_rect(colour = "black", 
+                                            fill = NA, 
+                                            size = 1.5),
+                axis.title=element_text(size = 12,
+                                        face = "bold"))
+
+filtnas_plot <- vis_miss(expr_matrix_filt) + 
+          ggtitle("Distribution of missing values",
+                  subtitle = paste("Only present in 2/3 TMT mixtures. Total =",
+                                   nrow(expr_matrix_filt))) + 
+          theme(axis.text.x = element_text(hjust = 0.5, 
+                                           vjust = 0.1, 
+                                           size = 10, 
+                                           angle = 90),
+                axis.text.y = element_text(hjust = 0.5, 
+                                           vjust = 0.1, 
+                                           size = 10),
+                panel.background = element_blank(),
+                panel.grid.major = element_line(color = "grey"),
+                panel.border = element_rect(colour = "black", 
+                                            fill = NA, 
+                                            size = 1.5),
+                axis.title=element_text(size = 12,
+                                        face = "bold"))
+```
+
+```{r fig.height=6, fig.width=10}
+cowplot::plot_grid(nofiltnas_plot, 
+                   filtnas_plot, 
+                   ncol = 2)
+```
+
+## Missing value imputation (`missForest`)
+
+```{r}
+mat_filt <- expr_matrix_filt %>%
+  column_to_rownames("Protein") %>%
+  as.matrix()
+
+t_mat_filt <- t(mat_filt)
+
+if(!file.exists(here("rds/missforest_imp_mat_filt.Rds"))){
+  
+ t_imp_mat_filt <- missForest::missForest(t_mat_filt)
+ t_imp_filt_mat <- t_imp_mat_filt$ximp
+ 
+ mat_filt_imp <- t(t_imp_filt_mat)
+ 
+ saveRDS(t_imp_mat_filt,
+         file = here("rds/missforest_imp_mat_filt.Rds"))
+ 
+} else {
+  
+ t_imp_mat_filt <- readRDS(here("rds/missforest_imp_mat_filt.Rds"))
+ t_imp_filt_mat <- t_imp_mat_filt$ximp
+ 
+ mat_filt_imp <- t(t_imp_filt_mat)
+  
+}
+```
+
+# Differential abundance analysis (DAA)
+
+**Protein to Gene annotation**
+
+```{r}
+prot2gene <- identified_proteins %>%
+  dplyr::select(Protein = protein_id, Gene = gene,
+                Description = description)
+```
+
+**Prep protein abundance matrix**
+
+```{r}
+mat_filt_impwo6 <- as.data.frame(mat_filt_imp) %>%
+  rownames_to_column("Protein") %>%
+  dplyr::select(-starts_with("x6")) %>%
+  column_to_rownames("Protein") %>%
+  as.matrix()
+
+sample_annotationwo6 <- sample_annotation2 %>%
+  filter(patient != "x6")
+```
+
+## Set up design matrix
+
+Initial vs recurrent samples are patient-matched, therefore the design matrix is setup so the linear model can account for the patient random effect.
+
+```{r}
+design_wo6 <- model.matrix(~ patientwo6 + recurrencewo6)
+
+rownames(design_wo6) <- sample_annotationwo6$paired_id
+```
+
+Check design matrix:
+
+```{r}
+print(design_wo6[1:4,])
+```
+
+Check expression matrix:
+
+```{r}
+mat_filt_impwo6[1:4,1:6]
+```
+
+## Fit linear model (`limma`)
+
+```{r}
+source(here("scr/fit_limmawo6.R"))
+```
+
+```{r, warning=FALSE}
+# fit limma
+limma_tab_wo6 <- fit_limmawo6(mat_filt_impwo6, 
+                         design_wo6, 
+                         method = 'robust', 
+                         Limma = "Robust - w Patient effect",
+                         prot2gene = prot2gene)
+
+#get proteins increased in recurrence
+increased_in_rec <- limma_tab_wo6 %>%
+  filter(logFC > 0,
+         adj.P.Val < 0.05) %>%
+  pull(Protein)
+
+#get proteins decreased in recurrence
+decreased_in_rec <- limma_tab_wo6 %>%
+  filter(logFC < 0,
+         adj.P.Val < 0.05) %>%
+  pull(Protein)
+```
+
+## Volcano plot (DAA visualization)
+
+```{r fig.width=6.5, fig.height=5.5, warning=FALSE}
+our_volcano(limma_tab_wo6, 
+            FC_cutoff = 0, 
+            pval_cutoff = 0.05, 
+            color_diffex = "red", 
+            color_nondifex = "#2a9d8f", 
+            interesting_proteins = NULL, 
+            vert_line_col = "red",
+            hline_col = "red", 
+            hline_pos = 0.05, 
+            linetype = "dashed",
+            increased_in = "Recurrent", 
+            comparison_title = "Recurrent vs Initial") +
+  theme(axis.text.x = element_text(hjust = 0.5, 
+                                   vjust = 0, 
+                                   size = 10, 
+                                   angle = 360),
+        axis.text.y = element_text(hjust = 0.95, 
+                                   vjust = 0.2, 
+                                   size = 10),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.border = element_rect(colour = "black", 
+                                    fill = NA, 
+                                    size = 0.5),
+        axis.title = element_text(size = 10),
+        legend.text = element_text(size = 7),
+        legend.title = element_text(size = 8),
+        legend.key.height= unit(3, 'mm'),
+        legend.key.width= unit(3, 'mm'),
+        legend.position="bottom") 
+```
+
+### Generate manuscript-ready volcano-plots {.unnumbered .unlisted}
+
+```{r generate_volcano, fig.width=8, fig.height=6, echo=FALSE, warning=FALSE}
+protlabels <- limma_tab_wo6 %>%
+      filter(logFC > 0 | logFC < 0,
+             adj.P.Val < 0.05)
+
+signi_hits <- nrow(protlabels)
+
+signi_up <- limma_tab_wo6 %>%
+      filter(logFC > 0 ,
+             adj.P.Val < 0.05) %>%
+  nrow()
+
+signi_down <- limma_tab_wo6 %>%
+      filter(logFC < 0 ,
+             adj.P.Val < 0.05) %>%
+  nrow()
+
+size <- 0.4
+
+volcano <- ggplot(data = limma_tab_wo6,
+                  mapping = aes(x = logFC, 
+                                y = -log10(adj.P.Val))) +
+      geom_point(data = limma_tab_wo6 %>% 
+                 filter(logFC > 0,
+                        adj.P.Val < 0.05),
+                 mapping = aes(x = logFC, 
+                               y = -log10(adj.P.Val)), 
+                 color = "red",
+                 size = size)+
+      geom_point(data = limma_tab_wo6 %>% 
+                   filter(logFC < -0,
+                          adj.P.Val < 0.05),
+                 mapping = aes(x = logFC, 
+                               y = -log10(adj.P.Val)), 
+                 color = "red",
+                 size = size) +
+      geom_point(data = limma_tab_wo6 %>% 
+                   filter(logFC > 0,
+                          adj.P.Val > 0.05),
+                 mapping = aes(x = logFC, 
+                               y = -log10(adj.P.Val)), 
+                 color = "#2a9d8f",
+                 size = size) +
+      geom_point(data = limma_tab_wo6 %>% 
+                   filter(logFC < -0,
+                          adj.P.Val > 0.05),
+                 mapping = aes(x = logFC, 
+                               y = -log10(adj.P.Val)), 
+                 color = "#2a9d8f",
+                 size = size) +
+      ggrepel::geom_text_repel(data = protlabels,
+                               aes(label = Gene), 
+                               size = 1.5) +
+      geom_hline(yintercept = -log10(0.05),
+                 color = "red", 
+                 linetype = "dashed") +
+      xlab("logFC - Recurrent / Primary")
+
+```
+
+```{r echo=FALSE}
+ggsave(plot = volcano, 
+       filename = here::here("figures/volcano_proteomics_gbm.tiff"), 
+       device = "tiff",
+       units = "mm",
+       width = 63,
+       height = 50)
+
+ggsave(plot = volcano, 
+       filename = here::here("figures/volcano_proteomics_gbm.eps"), 
+       device = "eps",
+       units = "mm",
+       width = 63,
+       height = 50)
+```
+
+```{r fig.width=8, fig.height=6, echo=FALSE}
+protlabels <- limma_tab_wo6 %>%
+      filter(logFC > 0 | logFC < 0,
+             adj.P.Val < 0.05,
+             Gene %in% c("ASAH1", "GPNMB", "SYNM", "CD14")) 
+
+size <- 0.4
+
+volcano2 <- ggplot(data = limma_tab_wo6,
+                      mapping = aes(x = logFC, y = -log10(adj.P.Val))) +
+      geom_point(data = limma_tab_wo6 %>% filter(logFC > 0,
+                                           adj.P.Val < 0.05),
+                 mapping = aes(x = logFC, y = -log10(adj.P.Val)), 
+                 color = "red",
+                 size = size)+
+      geom_point(data = limma_tab_wo6 %>% filter(logFC < -0,
+                                           adj.P.Val < 0.05),
+                 mapping = aes(x = logFC, y = -log10(adj.P.Val)), color = "red",
+                 size = size) +
+      geom_point(data = limma_tab_wo6 %>% filter(logFC > 0,
+                                           adj.P.Val > 0.05),
+                 mapping = aes(x = logFC, y = -log10(adj.P.Val)), color = "#2a9d8f",
+                 size = size) +
+      geom_point(data = limma_tab_wo6 %>% filter(logFC < -0,
+                                           adj.P.Val > 0.05),
+                 mapping = aes(x = logFC, y = -log10(adj.P.Val)), color = "#2a9d8f",
+                 size = size) +
+      ggrepel::geom_text_repel(data = protlabels,
+                               aes(label = Gene), size = 3.5) +
+      geom_hline(yintercept = -log10(0.05),
+                 color = "red", linetype = "dashed") +
+      xlab("logFC - Recurrent / Primary")
+
+```
+
+```{r echo=FALSE}
+ggsave(plot = volcano2, 
+       filename = here::here("figures/volcano2_proteomics_gbm.tiff"), 
+       device = "tiff",
+       units = "mm",
+       width = 63,
+       height = 50)
+
+ggsave(plot = volcano2, 
+       filename = here::here("figures/volcano2_proteomics_gbm.eps"), 
+       device = "eps",
+       units = "mm",
+       width = 63,
+       height = 50)
+```
+
+### Write tabular results (for supplementary tables) {.unnumbered .unlisted}
+
+```{r}
+write_tsv(x = limma_tab_wo6, 
+          file = here("suppl_tables/diff_abundance_gbm_rec_vs_init_proteomics.tsv"))
+```
+
+## Boxplots specific proteins
+
+```{r}
+quant_anwgene <- left_join(quant_annotated, 
+                           prot2gene)
+
+tab_2_paired_boxplot <-  quant_anwgene %>%
+  filter(Gene %in% c("ASAH1", 
+                     "SYNM", 
+                     "GPNMB",
+                     "MPO"))
+# prep data
+slim_data <- pivot_longer(expr_matrix_filt, 
+                          cols = 2:length(names(expr_matrix_filt)), 
+                          names_to = c("patient",
+                                       "condition"),
+                          values_to = "Intensity",
+                          names_sep = "\\_") %>% 
+  group_by(Protein)
+
+slim_data2 <- pivot_wider(slim_data, 
+                          values_from = Intensity, 
+                          names_from = condition) %>%
+  filter(patient != "x6")
+
+slim_data3 <- slim_data2 %>% 
+  mutate(Abs_diff = rec-prim) %>%
+  mutate(rank = row_number(Abs_diff)) %>% 
+  dplyr::rename(Initial = prim, 
+                Recurrent = rec) %>%
+  ungroup() %>%
+  filter(Protein %in% c("Q13510", 
+                        "Q14956", 
+                        "O15061",
+                        "P05164")) %>%
+  mutate(Gene = case_when(Protein == "Q13510" ~ "ASAH1",
+                          Protein == "Q14956" ~ "GPNMB",
+                          Protein == "O15061" ~ "SYNM",
+                          Protein == "P05164" ~ "MPO"))
+```
+
+```{r fig.width=7.5, fig.height=5.9}
+ggpaired(slim_data3,
+         cond1 = "Initial",
+         cond2 = "Recurrent", 
+         fill = "condition",
+         ylab = "Normalized Abundance",
+         label = NULL,
+         repel = TRUE,
+         facet.by = "Gene", 
+         point.size = 0.2, 
+         line.size = 0.1) 
+```
+
+```{r echo=FALSE}
+size <- 5
+
+paired_boxplots <- ggpaired(slim_data3,
+                            cond1 = "Initial",
+                            cond2 = "Recurrent", 
+                            fill = "condition",
+                            ylab = "Normalized Abundance",
+                            label = NULL,
+                            repel = TRUE,
+                            facet.by = "Gene", 
+                            point.size = 0.2, 
+                            line.size = 0.1) +
+      theme(axis.text.x = element_text(hjust = 0.5, 
+                                       vjust = 0, 
+                                       size = 5, 
+                                       angle = 360),
+           axis.text.y = element_text(hjust = 0.95, 
+                                      vjust = 0.2, 
+                                      size = 5),
+           panel.background = element_blank(),
+           panel.grid.major = element_blank(),
+           panel.border = element_rect(colour = "black", 
+                                       fill = NA, 
+                                       size = 0.5),
+           axis.title = element_text(size = size),
+           legend.position="none",
+           strip.text = element_text(hjust = 0.5, 
+                                     vjust = 0, 
+                                     size = 4, 
+                                     angle = 360,
+                                     margin = margin(0.4,0,0.4,0, "mm"),
+                                     lineheight = 0.3)) 
+```
+
+```{r echo=FALSE}
+ggsave(plot = paired_boxplots, 
+       filename = here::here("figures/paired_box_proteomics_gbm.tiff"), 
+       device = "tiff",
+       units = "mm",
+       width = 61,
+       height = 45)
+
+ggsave(plot = paired_boxplots, 
+       filename = here::here("figures/paired_box_proteomics_gbm.eps"), 
+       device = "eps",
+       units = "mm",
+       width = 61,
+       height = 45)
+```
+
+#### ASAH1 vs MPO abundance (Rec vs Init)
+
+```{r}
+tab_2_mporatio <- tab_2_paired_boxplot %>%
+  filter(Gene %in% c("ASAH1", "MPO")) %>%
+  dplyr::select(Gene,
+                recurrence,
+                Abundance,
+                patient,
+                sample_id) %>%
+  mutate(Condition = case_when(recurrence == "prim" ~ "Initial", 
+                               recurrence == "rec" ~ "Recurrent")) %>%
+  dplyr::select(-recurrence)
+
+mpo_ratio_prep <- tab_2_mporatio %>% 
+  pivot_wider(values_from = Abundance,
+              names_from = Gene) %>%
+  filter(patient != "x6") %>%
+  mutate(Ratio_MPO_vs_ASAH1 = ASAH1 - MPO) %>%
+  dplyr::select(-c(MPO, ASAH1)) %>%
+  pivot_wider(values_from = Ratio_MPO_vs_ASAH1,
+              names_from = Condition) %>% 
+  mutate(measure = "Delta(ASAH1 - MPO)")
+
+mpo_ratio_prep2 <- tab_2_mporatio %>% 
+  pivot_wider(values_from = Abundance,
+              names_from = Gene) %>%
+  filter(patient != "x6") 
+```
+
+```{r}
+paired_boxplots_asah1mporatio <- ggpaired(mpo_ratio_prep,
+                                          cond1 = "Initial",
+                                          cond2 = "Recurrent", 
+                                          fill = "condition",
+                                          ylab = "Abundance Delta(ASAH1 - MPO)",
+                                          label = NULL,
+                                          repel = TRUE,
+                                          point.size = 0.2, 
+                                          line.size = 0.1) +
+      stat_compare_means(paired = TRUE, 
+                         vjust = 2, 
+                         size = 1.5) +
+      theme(axis.text.x = element_text(hjust = 0.5, 
+                                       vjust = 0, 
+                                       size = 5, 
+                                       angle = 360),
+           axis.text.y = element_text(hjust = 0.95, 
+                                      vjust = 0.2, 
+                                      size = 5),
+           panel.background = element_blank(),
+           panel.grid.major = element_blank(),
+           panel.border = element_rect(colour = "black", 
+                                       fill = NA, 
+                                       size = 0.5),
+           axis.title = element_text(size = size),
+           legend.position="none",
+           strip.text = element_text(hjust = 0.5, 
+                                     vjust = 0, 
+                                     size = 4, 
+                                     angle = 360,
+                                     margin = margin(0.4,
+                                                     0,
+                                                     0.4,
+                                                     0, "mm"),
+                                     lineheight = 0.3))  
+```
+
+##### Compare Deltas of abundance (Boxplot)
+
+```{r fig.width=4.8, fig.height=3.6}
+print(paired_boxplots_asah1mporatio) 
+```
+
+```{r echo=FALSE}
+ggsave(plot = paired_boxplots_asah1mporatio, 
+       filename = here::here("figures/paired_box_delta_asah1_mpo_gbm.tiff"), 
+       device = "tiff",
+       units = "mm",
+       width = 60,
+       height = 45)
+
+ggsave(plot = paired_boxplots_asah1mporatio, 
+       filename = here::here("figures/paired_box_delta_asah1_mpo_gbm.eps"), 
+       device = "eps",
+       units = "mm",
+       width = 60,
+       height = 45)
+```
+
+##### Scatter plot ASAH1 vs MPO
+
+```{r}
+scatter_asah1mpo <- ggplot(data = mpo_ratio_prep2,
+                           aes(x = ASAH1,
+                               y = MPO)) + 
+                    geom_point(mapping = aes(color = Condition)) + 
+                    geom_smooth(method = lm, 
+                                se = FALSE, 
+                                color = "black",
+                                size = 0.5) 
+```
+
+```{r fig.width=4.8, fig.height=3.6}
+print(scatter_asah1mpo)
+```
+
+```{r echo=FALSE}
+ggsave(plot = scatter_asah1mpo, 
+       filename = here::here("figures/scatterplot_asah1_mpo_gbm.tiff"), 
+       device = "tiff",
+       units = "mm",
+       width = 60,
+       height = 60)
+
+ggsave(plot = scatter_asah1mpo, 
+       filename = here::here("figures/scatterplot_asah1_mpo_gbm.eps"), 
+       device = "eps",
+       units = "mm",
+       width = 60,
+       height = 60)
+```
+
+## Differences in abundance of ASAH1 by type of resection
+
+Load the patient clinical data
+
+```{r echo=FALSE}
+patient_table <- readxl::read_xlsx(path = here("data/Patients_information_FINAL.xlsx"))
+```
+
+```{r}
+patients_proteomics <- patient_table %>%
+  filter(`Mass Spectrometry` == "X") %>%
+  dplyr::select(Sex, 
+                `Age at surgery (years)`, 
+                `Time-to-reccurence (days)`,
+                `Type of resection`,
+                `Tumor localization`, 
+                Treatment,
+                sample_id = `LAB-ID`) %>%
+  mutate(`Time-to-reccurence (days)` = as.numeric(`Time-to-reccurence (days)`))
+```
+
+```{r}
+sample2patient_id <- mpo_ratio_prep2 %>% 
+  dplyr::select(sample_id, 
+                patient) %>% 
+  distinct()
+
+patients_proteomics <- left_join(patients_proteomics, 
+                                 sample2patient_id) %>%
+  dplyr::select(-matches("sample"))
+```
+
+```{r}
+resection_diff_asah1 <- left_join(mpo_ratio_prep2,
+                                  patients_proteomics) %>% 
+  dplyr::select(-MPO) %>%
+  dplyr::rename(abundance_ASAH1 = ASAH1,
+                type_resection = `Type of resection`) %>%
+  na.exclude() %>%
+  distinct()
+```
+
+```{r}
+resection_diff_asah1plot <- ggplot(data = resection_diff_asah1, 
+                                   mapping = aes(x = Condition,
+                                                 y = abundance_ASAH1,
+                                                 fill = type_resection)) + 
+  geom_boxplot()
+```
+
+```{r}
+resection_diff_asah1plot
+```
+
+```{r}
+twowayanova_resection <- aov(abundance_ASAH1 ~ Condition * type_resection, 
+                             data = resection_diff_asah1)
+```
+
+```{r}
+summary(twowayanova_resection)
+```
+
+```{r}
+TukeyHSD(twowayanova_resection)
+```
+
+There is no significant difference in ASAH1 abundance based on type of resection.
+
+# ID coverage after sparcity reduction
+
+```{r}
+ids_summary2 <- quant_annotated %>% 
+  dplyr::select(Protein, 
+                mixture, 
+                Abundance) %>% 
+  distinct(Protein, 
+           mixture, 
+           .keep_all = TRUE) %>%
+  group_by(mixture) %>%
+  summarise(`Nr of IDs` = sum(!is.na(Abundance))) %>% 
+  bind_rows(.,
+            tibble(mixture = "Quant_in_all",
+                   `Nr of IDs` = nrow(expr_matnona))) %>%
+  bind_rows(.,
+            tibble(mixture = "Quant_2/3_mixtures",
+                   `Nr of IDs` = nrow(mat_filt_impwo6))) %>%
+  bind_rows(.,
+            tibble(mixture = "Overall",
+                   `Nr of IDs` = nrow(expr_matrix)))
+
+ids_summary2 <- mutate(ids_summary2,
+                       Mixture = case_when(mixture == "tmt_1" ~ "Mix_1",
+                                           mixture == "tmt_2" ~ "Mix_2",
+                                           mixture == "tmt_3" ~ "Mix_3",
+                                           mixture == "Quant_in_all" ~ "Quant. in all",
+                                           mixture == "Overall" ~ "Overall",
+                                           mixture == "Quant_2/3_mixtures" ~ "Quant. in 2/3")) %>%
+  mutate(Mixture = factor(Mixture, levels = c("Overall","Quant. in 2/3", "Quant. in all",
+                                               "Mix_3", "Mix_2", "Mix_1")))
+```
+
+Number of identified proteins: `r nrow(expr_matrix)`
+
+Number of identified and quantified proteins in all samples: `r nrow(expr_matnona)`
+
+Number of identified and quantified proteins 2 out of 3 batches: `r nrow(mat_filt_impwo6)`
+
+```{r fig.height=4, fig.width=7, warning=FALSE}
+ggplot(data = ids_summary2,
+       aes(y = `Nr of IDs`, 
+           x = mixture)) +
+  geom_col(fill = "#008683") + 
+  
+  geom_text(size = 5, 
+            position = position_stack(vjust = 0.5), 
+            aes(label = `Nr of IDs`)) +
+  coord_cartesian(ylim = c(0, 5000))+
+  coord_flip() +
+  labs(title = "Number of Identified and quantified Proteins by Mixture") +
+  ylab("Nr of IDed and Quant Proteins") + 
+  xlab("TMT Mixture") + 
+  theme(axis.text.x = element_text(hjust = 0.5, 
+                                   vjust = 0.1, 
+                                   size = 14, 
+                                   angle = 0),
+        axis.text.y = element_text(hjust = 0.5, 
+                                   vjust = 0.1, 
+                                   size = 12, 
+                                   angle = 0),
+        panel.background = element_blank(),
+        panel.grid.major = element_line(color = "grey"),
+        panel.border = element_rect(colour = "black", 
+                                    fill = NA, 
+                                    size = 1.5),
+        axis.title = element_text(size = 12, 
+                                  face = "bold"))
+```
+
+```{r echo=FALSE}
+barplot_cover <- ggplot(data = ids_summary2,
+       aes(y = `Nr of IDs`, 
+           x = Mixture)) +
+  geom_col(fill = "#008683") + 
+  geom_text(size = 2, 
+            position = position_stack(vjust = 0.5), 
+            aes(label = `Nr of IDs`)) +
+  coord_cartesian(ylim = c(0, 5000))+
+  coord_flip() +
+  theme(axis.text.x = element_text(hjust = 0.5, 
+                                   vjust = 0, 
+                                   size = 7, 
+                                   angle = 360),
+        axis.text.y = element_text(hjust = 0.95, 
+                                   vjust = 0.2, 
+                                   size = 7),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.border = element_rect(colour = "black", 
+                                    fill = NA, 
+                                    size = 0.5),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.text = element_text(size = 7),
+        legend.title = element_text(size = 8),
+        legend.key.height= unit(3, 'mm'),
+        legend.key.width= unit(3, 'mm'),
+        legend.position="bottom")
+```
+
+```{r echo=FALSE}
+ggsave(plot = barplot_cover, 
+       filename = here::here("figures/barplot_coverage_proteomics_gbm.tiff"), 
+       device = "tiff",
+       units = "mm",
+       width = 63,
+       height = 50)
+
+ggsave(plot = barplot_cover, 
+       filename = here::here("figures/barplot_coverage_proteomics_gbm.eps"), 
+       device = "eps",
+       units = "mm",
+       width = 63,
+       height = 50)
+```
+
+# Exploratory analysis after sparcity reduction
+
+## Plots of normalized abundance distribution
+
+```{r}
+expr_matrix_filtwo6 <- as.data.frame(mat_filt_imp) %>%
+  rownames_to_column("Protein") %>%
+  dplyr::select(-starts_with("x6"))
+
+long_mat_f <- pivot_longer(expr_matrix_filtwo6,
+                         cols = starts_with("x"),
+                         names_sep = "_",
+                         names_to = c("patient", "recurrence"),
+                         values_to = "Abundance")
+
+long_mat_3 <- long_mat_f %>%
+  mutate(paired_id = paste(patient, recurrence, sep = "_"))
+
+paired_annot_uniq2 <- long_mat_3 %>%
+  dplyr::select(patient, recurrence, paired_id) %>%
+  distinct()
+
+paired_annot_uniq2$paired_id
+## Annotated abundance data in long format ----
+
+quant_annotated_f <- left_join(long_mat_3,
+                             sample_annotation2, 
+                             by = c("paired_id", "patient","recurrence")) %>%
+  mutate(Channel_mix = paste(mixture,channel,  sep = "_"),
+         paired_id = factor(paired_id, levels = paired_annot_uniq2$paired_id)) %>%
+  mutate(Sample = str_replace_all(paired_id, pattern = "prim", replacement = "init"),
+         Stage = if_else(recurrence == "prim",
+                         true = "Initial",
+                         false = "Recurrent"))
+
+```
+
+```{r}
+expr_matrix_filtwo6 <- as.data.frame(mat_filt_imp) %>%
+  rownames_to_column("Protein") %>%
+  dplyr::select(-starts_with("x6"))
+
+long_mat_f <- pivot_longer(expr_matrix_filtwo6,
+                         cols = starts_with("x"),
+                         names_sep = "_",
+                         names_to = c("patient", "recurrence"),
+                         values_to = "Abundance")
+
+long_mat_3 <- long_mat_f %>%
+  mutate(paired_id = paste(patient, recurrence, sep = "_"))
+
+paired_annot_uniq2 <- long_mat_3 %>%
+  dplyr::select(patient, recurrence, paired_id) %>%
+  distinct()
+
+paired_annot_uniq2$paired_id
+## Annotated abundance data in long format ----
+
+quant_annotated_f <- left_join(long_mat_3,
+                             sample_annotation2, 
+                             by = c("paired_id", "patient","recurrence")) %>%
+  mutate(Channel_mix = paste(mixture,channel,  sep = "_"),
+         paired_id = factor(paired_id, levels = paired_annot_uniq2$paired_id)) %>%
+  mutate(Sample = str_replace_all(paired_id, pattern = "prim", replacement = "init"),
+         Stage = if_else(recurrence == "prim",
+                         true = "Initial",
+                         false = "Recurrent"))
+
+```
+
+### Normalized ion reporter abundance distribution by TMT channel/sample {.unnumbered}
+
+```{r warning=FALSE}
+qcplot_f <- ggplot(quant_annotated_f,
+                   mapping = aes(x = Sample, 
+                                 y = Abundance, 
+                                 fill = Stage)) +
+                   geom_boxplot(outlier.size=0.1, size = 0.25) + 
+                   theme(axis.text.x = element_text(hjust = 0.5, 
+                                                    vjust = 0, 
+                                                    size = 7, 
+                                                    angle = 90),
+                         axis.text.y = element_text(hjust = 0.5, 
+                                                    vjust = 0, 
+                                                    size = 6),
+                         panel.background = element_blank(),
+                         panel.grid.major = element_blank(),
+                         panel.border = element_rect(colour = "black", 
+                                                     fill = NA, 
+                                                     size = 0.5),
+                         axis.title=element_text(size = 8),
+                         axis.title.x = element_blank(),
+                         legend.text = element_text(size = 7),
+                         legend.title = element_text(size = 8),
+                         legend.key.height= unit(3, 'mm'),
+                         legend.key.width= unit(3, 'mm'),
+                         legend.position="bottom")
+```
+
+```{r fig.height=4, fig.width=7, warning=FALSE, echo=FALSE}
+print(qcplot_f)
+```
+
+```{r echo=FALSE}
+ggsave(plot = qcplot_f, 
+       filename = here::here("figures/boxplot_abund_dist_proteomics_gbm.tiff"), 
+       device = "tiff",
+       units = "mm",
+       width = 63,
+       height = 50)
+
+ggsave(plot = qcplot_f, 
+       filename = here::here("figures/boxplot_abund_dist_proteomics_gbm.eps"), 
+       device = "eps",
+       units = "mm",
+       width = 63,
+       height = 50)
+```
+
+# Over-representation analyses/tests (ORAs)
+
+## Prep tabular info for ORAs {.unnumbered .unlisted}
+
+```{r}
+tab_sig_prots_tryptic <- bind_rows(tibble(protein = increased_in_rec,
+                                  characteristic = "up-regulated"),
+                           tibble(protein = decreased_in_rec,
+                                  characteristic = "down-regulated"))
+
+limma_tab_wo62_tryptic <- limma_tab_wo6
+
+
+unip2symb_tryptic <- bitr(limma_tab_wo62_tryptic$Protein, 
+                  fromType = "UNIPROT", 
+                  toType = c("SYMBOL", "ENTREZID"),
+                  OrgDb = org.Hs.eg.db) %>%
+  dplyr::rename(protein = UNIPROT) %>%
+  mutate(Protein = protein)
+
+tab_sig_prots_tryptic <- left_join(tab_sig_prots_tryptic, unip2symb_tryptic)
+
+unip2symbIDed_tryptic <- bitr(identified_proteins$protein_id, 
+                  fromType = "UNIPROT", 
+                  toType = c("SYMBOL", "ENTREZID"),
+                  OrgDb = org.Hs.eg.db)
+
+
+limma_tab_wo62_tryptic <- left_join(limma_tab_wo62_tryptic, unip2symb_tryptic)
+
+
+geneList <- limma_tab_wo62_tryptic$logFC
+names(geneList) <- limma_tab_wo62_tryptic$Protein
+geneList <-  sort(geneList, decreasing = TRUE)
+
+geneListr <- limma_tab_wo62_tryptic$logFC
+names(geneListr) <- limma_tab_wo62_tryptic$ENTREZID
+geneListr <-  sort(geneListr, decreasing = TRUE)
+```
+
+## Reactome
+
+```{r}
+group_comparison_react <- compareCluster(ENTREZID~characteristic, 
+                                              data=tab_sig_prots_tryptic, 
+                                              fun="enrichPathway",
+                                              organism = "human",
+                                              pvalueCutoff = 0.05,
+                                              pAdjustMethod = "BH",
+                                              qvalueCutoff = 0.2,
+                                              universe = unip2symbIDed_tryptic$ENTREZID,
+                                              minGSSize = 10,
+                                              maxGSSize = 1000,
+                                              readable = TRUE)
+```
+
+### Dotplot Reactome
+
+```{r warning=FALSE, message=FALSE}
+dotplot_react <- enrichplot::dotplot(group_comparison_react, 
+                                     x = "characteristic") + 
+          xlab("Quant in Recurrent status") +
+  scale_color_continuous(low = "red", 
+                         high = "blue",
+            guide=guide_colorbar(reverse = TRUE),
+            breaks = c(0.01, 
+                       0.04)) +
+  scale_size_continuous(breaks = c(0.10, 
+                                   0.25)) +
+  theme(axis.text.x = element_text(hjust = 0.4, 
+                                   vjust = 0.1, 
+                                   size = 6, 
+                                   angle = 340),
+        axis.text.y = element_text(hjust = 0.95, 
+                                   vjust = 0.2, 
+                                   size = 6),
+        panel.background = element_blank(),
+        panel.border = element_rect(colour = "black", 
+                                    fill = NA, 
+                                    size = 0.5),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.text = element_text(size = 6),
+        legend.title = element_text(size = 6),
+        legend.key.height= unit(2, 'mm'),
+        legend.key.width= unit(2, 'mm'),
+        legend.position="bottom")
+```
+
+```{r}
+print(dotplot_react)
+```
+
+```{r}
+ggsave(plot = dotplot_react, 
+       filename = here::here("figures/dotplot_reactome_proteomics_gbm.tiff"), 
+       device = "tiff",
+       units = "mm",
+       width = 91,
+       height = 90)
+
+ggsave(plot = dotplot_react, 
+       filename = here::here("figures/dotplot_reactome_proteomics_gbm.eps"), 
+       device = "eps",
+       units = "mm",
+       width = 91,
+       height = 90)
+```
+
+### Cnet plot Reactome
+
+```{r}
+cnet_plot <- enrichplot::cnetplot(group_comparison_react) + 
+  theme(legend.text = element_text(size = 7),
+        text = element_text(size = 4),
+                legend.title = element_text(size = 8),
+                legend.key.height = unit(3, 'mm'),
+                legend.key.width = unit(3, 'mm'),
+                legend.position = "bottom")
+```
+
+```{r}
+print(cnet_plot)
+```
+
+```{r}
+ggsave(plot = cnet_plot, 
+       filename = here::here("figures/cnet_plot_reactome_proteomics_gbm.tiff"), 
+       device = "tiff",
+       units = "mm",
+       width = 110,
+       height = 110)
+
+ggsave(plot = cnet_plot, 
+       filename = here::here("figures/cnet_plot_reactome_proteomics_gbm.eps"), 
+       device = "eps",
+       units = "mm",
+       width = 110,
+       height = 110)
+
+ggsave(plot = cnet_plot, 
+       filename = here::here("figures/cnet_plot_reactome_proteomics_gbm.svg"), 
+       device = "svg",
+       units = "mm",
+       width = 110,
+       height = 110)
+```
+
+# Protein coverage plots
+
+```{r}
+source(here("scr/protein_peptide_coverage_plot.R"))
+source(here("scr/annotate_peptides.R"))
+```
+
+## Annotate peptides from interesting proteins {.unnumbered .unlist}
+
+```{r}
+# get protein to peptide pairs
+pept2prot_inter <- identified_peptides %>%
+  filter(gene %in% c("ASAH1", 
+                     "SYNM", 
+                     "GPNMB")) %>%
+  dplyr::select(Peptide = sequence, 
+                Genes = protein_id)
+
+# map peptides to protein sequence
+annotated_peptides <- annotate_peptides(expr_mat = pept2prot_inter,
+                                        fasta = fasta_ident_prots) 
+
+annotated_peptides2 <- annotated_peptides %>%
+  mutate(peptide_length = str_length(Peptide))
+```
+
+## ASAH1
+
+```{r}
+feat_asah1 <- drawProteins::get_features("Q13510")
+
+feat_asah1df <- drawProteins::feature_to_dataframe(feat_asah1)
+#Get peptides as coverage features for plotting
+
+cov_feat_asah1 <- get_coverage(annotated_peptides = annotated_peptides2, 
+                               id = "Q13510")
+#Merge coverage feature info with protein sequence features info:
+
+fullfeat_asah1 <- add_peptides(feat_asah1df,
+                               peptide_coverage_data = cov_feat_asah1)
+# drawCanvas
+canvas <- draw_canvas(fullfeat_asah1)
+
+# draw the protein chain
+wchain <- draw_chains(canvas, fullfeat_asah1)
+
+# draw protein domains
+wdomainsasah1 <- draw_domains(wchain, data = fullfeat_asah1)
+#pasa <- drawProteins::draw_folding(wdomainsasah1, fullfeat_asah1)
+cov_feat_asah1$order <- 1.4
+
+pepcov_asah1 <- draw_peptides(wdomainsasah1, cov_feat_asah1)
+```
+
+```{r}
+print(pepcov_asah1)
+```
+
+```{r}
+ggsave(plot = pepcov_asah1, 
+       filename = here::here("figures/asah1_coverage_proteomics_gbm.tiff"), 
+       device = "tiff",
+       units = "mm",
+       width = 150,
+       height = 100)
+
+ggsave(plot = pepcov_asah1, 
+       filename = here::here("figures/asah1_coverage_proteomics_gbm.eps"), 
+       device = "eps",
+       units = "mm",
+       width = 150,
+       height = 100)
+```
+
+## SYMN
+
+```{r}
+feat_SYNM <- drawProteins::get_features("O15061")
+feat_SYNMdf <- drawProteins::feature_to_dataframe(feat_SYNM)
+#Get peptides as coverage features for plotting
+
+cov_feat_SYNM <- get_coverage(annotated_peptides = annotated_peptides2, 
+                               id = "O15061")
+#Merge coverage feature info with protein sequence features info:
+
+fullfeat_SYNM <- add_peptides(feat_SYNMdf,
+                               peptide_coverage_data = cov_feat_SYNM)
+# drawCanvas
+canvasSYNM <- draw_canvas(fullfeat_SYNM)
+
+# draw the protein chain
+wchainSYNM <- draw_chains(canvasSYNM, fullfeat_SYNM)
+cov_feat_SYNM$order <- 1.4
+
+pepcov_SYNM <- draw_peptides(wchainSYNM, cov_feat_SYNM)
+```
+
+```{r}
+print(pepcov_SYNM)
+```
+
+```{r}
+ggsave(plot = pepcov_SYNM, 
+       filename = here::here("figures/SYNM_coverage_proteomics_gbm.tiff"), 
+       device = "tiff",
+       units = "mm",
+       width = 150,
+       height = 100)
+
+ggsave(plot = pepcov_SYNM, 
+       filename = here::here("figures/SYNM_coverage_proteomics_gbm.eps"), 
+       device = "eps",
+       units = "mm",
+       width = 150,
+       height = 100)
+```
+
+# Associate protein expression with Time to Recurrence
+
+```{r}
+library(readxl)
+```
+
+```{r echo=FALSE}
+latency_data <- read_excel(path = here("data/ELISA_LATENCY_KM.xlsx"), 
+                           skip = 1
+                           ) %>%
+  clean_names()
+```
+
+```{r echo=FALSE}
+patient_table <- readxl::read_xlsx(path = here("data/Patients_information_FINAL.xlsx"))
+```
+
+```{r echo=FALSE}
+latency_data %>%
+  dplyr::mutate(ASAH1.ng.ml = log2(asah1_ng_ml_6+1),
+                SYNM.ng.ml = log2(synm_ng_ml_7+1),
+                GPNMB.ng.ml = log2(gpnmb_ng_ml_8+1),
+                MMP.9.ng.ml = log2(mmp_9_ng_ml_9+1)) %>%
+  dplyr::mutate(ASAH1 = ifelse(ASAH1.ng.ml>=mean(asah1_ng_ml_6), "high", "low"),
+                SYNM = ifelse(SYNM.ng.ml>=mean(synm_ng_ml_7), "high", "low"),
+                GPNMB = ifelse(GPNMB.ng.ml>=mean(gpnmb_ng_ml_8), "high", "low"),
+                MMP9 = ifelse(MMP.9.ng.ml>=mean(mmp_9_ng_ml_9, na.rm=T), "high", "low")) -> latency_data
+```
+
+```{r}
+patients_proteomics <- patient_table %>%
+  filter(`Mass Spectrometry` == "X") %>%
+  dplyr::select(Sex, 
+                `Age at surgery (years)`, 
+                `Time-to-reccurence (days)`,
+                `Type of resection`,
+                `Tumor localization`, 
+                Treatment,
+                sample_id = `LAB-ID`) %>%
+  mutate(`Time-to-reccurence (days)` = as.numeric(`Time-to-reccurence (days)`))
+```
+
+## What's the association of ASAH1/SYNM/GPNNMB/MMP9 at Initial stage with time to recurrence?
+
+```{r}
+quant_annot_intr_init <- quant_annotated %>%
+  filter(Protein %in% c("Q13510", 
+                        "Q14956", 
+                        "O15061",
+                        "P14780"),
+         recurrence == "prim") %>%
+  mutate(Gene = case_when(Protein == "Q13510" ~ "ASAH1a",
+                          Protein == "Q14956" ~ "GPNMBa",
+                          Protein == "O15061" ~ "SYNMa",
+                          Protein == "P14780" ~ "MMP9a")) %>% 
+  left_join(patients_proteomics) %>% 
+  dplyr::select(sample_id,
+                patient,
+                Gene,
+                Abundance, 
+                `Time-to-reccurence (days)`) %>%
+  pivot_wider(names_from = Gene, 
+              values_from = Abundance) %>%
+  dplyr::mutate(ASAH1 = ifelse(ASAH1a >= mean(ASAH1a), 
+                               "high", 
+                               "low"),
+                SYNM = ifelse(SYNMa >= mean(SYNMa), 
+                              "high", 
+                              "low"),
+                GPNMB = ifelse(GPNMBa >= mean(GPNMBa), 
+                               "high", 
+                               "low"),
+                MMP9 = ifelse(MMP9a >= mean(MMP9a, 
+                                            na.rm=T), 
+                              "high", 
+                              "low"))
+
+labid2patientn <- quant_annot_intr_init %>% 
+  dplyr::select(patient, sample_id) %>% 
+  dplyr::distinct()
+
+patients_proteomics <- left_join(labid2patientn, 
+                                 patients_proteomics)
+
+```
+
+```{r}
+library(survival)
+library(survminer)
+```
+
+```{r}
+fit1 <- survfit(Surv(`Time-to-reccurence (days)`) ~ ASAH1, 
+               data = quant_annot_intr_init)
+print(fit1)
+# Change color, linetype by strata, risk.table color by strata
+surv_p1 <- ggsurvplot(fit1,
+          pval = TRUE, conf.int = TRUE,
+          risk.table = FALSE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          linetype = "strata", # Change line type by groups
+          surv.median.line = "hv", # Specify median survival
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          palette = "Dark2"
+          ) +
+  labs(x="Time to Recurrence (Days)", y = "Time to Recurrence Probability")
+
+fit2 <- survfit(Surv(`Time-to-reccurence (days)`) ~ SYNM, 
+               data = quant_annot_intr_init)
+print(fit2)
+# Change color, linetype by strata, risk.table color by strata
+surv_p2 <- ggsurvplot(fit2,
+          pval = TRUE, conf.int = TRUE,
+          risk.table = FALSE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          linetype = "strata", # Change line type by groups
+          surv.median.line = "hv", # Specify median survival
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          palette = "Dark2"
+          ) +
+  labs(x="Time to Recurrence (Days)", y = "Time to Recurrence Probability")
+
+
+fit3 <- survfit(Surv(`Time-to-reccurence (days)`) ~ GPNMB, 
+               data = quant_annot_intr_init)
+print(fit3)
+# Change color, linetype by strata, risk.table color by strata
+surv_p3 <- ggsurvplot(fit3,
+          pval = TRUE, 
+          conf.int = TRUE,
+          risk.table = FALSE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          linetype = "strata", # Change line type by groups
+          surv.median.line = "hv", # Specify median survival
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          palette = "Dark2"
+          ) +
+  labs(x="Time to Recurrence (Days)", y = "Time to Recurrence Probability")
+
+
+fit4 <- survfit(Surv(`Time-to-reccurence (days)`) ~ MMP9, 
+               data = quant_annot_intr_init)
+print(fit4)
+# Change color, linetype by strata, risk.table color by strata
+surv_p4 <- ggsurvplot(fit4,
+          pval = TRUE, conf.int = TRUE,
+          risk.table = FALSE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          linetype = "strata", # Change line type by groups
+          surv.median.line = "hv", # Specify median survival
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          palette = "Dark2"
+          ) +
+  labs(x="Time to Recurrence (Days)", y = "Time to Recurrence Probability")
+```
+
+```{r}
+surv_p1
+surv_p2
+surv_p3
+surv_p4
+```
+
+## What's the association of ASAH1/SYNM/GPNNMB/MMP9 at Recurrent stage with time to recurrence?
+
+```{r}
+quant_annot_intr_rec <- quant_annotated %>%
+  filter(Protein %in% c("Q13510", 
+                        "Q14956", 
+                        "O15061",
+                        "P05164"),
+         recurrence == "rec") %>%
+  mutate(Gene = case_when(Protein == "Q13510" ~ "ASAH1a",
+                          Protein == "Q14956" ~ "GPNMBa",
+                          Protein == "O15061" ~ "SYNMa",
+                          Protein == "P05164" ~ "MMP9a"))  %>% 
+  left_join(patients_proteomics, by = "patient") %>% 
+  dplyr::select(patient,
+                Gene,
+                Abundance, 
+                `Time-to-reccurence (days)`) %>%
+  pivot_wider(names_from = Gene, 
+              values_from = Abundance) %>%
+  dplyr::mutate(ASAH1 = ifelse(ASAH1a >= mean(ASAH1a), 
+                               "high", 
+                               "low"),
+                SYNM = ifelse(SYNMa >= mean(SYNMa), 
+                              "high", 
+                              "low"),
+                GPNMB = ifelse(GPNMBa >= mean(GPNMBa), 
+                               "high", 
+                               "low"),
+                MMP9 = ifelse(MMP9a >= mean(MMP9a, 
+                                            na.rm=T), 
+                              "high", 
+                              "low")) 
+```
+
+```{r}
+fit12 <- survfit(Surv(`Time-to-reccurence (days)`) ~ ASAH1, 
+               data = quant_annot_intr_rec)
+print(fit12)
+# Change color, linetype by strata, risk.table color by strata
+surv_p12 <- ggsurvplot(fit12,
+          pval = TRUE, conf.int = TRUE,
+          risk.table = FALSE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          linetype = "strata", # Change line type by groups
+          surv.median.line = "hv", # Specify median survival
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          palette = "Dark2"
+          ) +
+  labs(x="Time to Recurrence (Days)", y = "Time to Recurrence Probability")
+
+fit22 <- survfit(Surv(`Time-to-reccurence (days)`) ~ SYNM, 
+               data = quant_annot_intr_rec)
+print(fit22)
+# Change color, linetype by strata, risk.table color by strata
+surv_p22 <- ggsurvplot(fit22,
+          pval = TRUE, conf.int = TRUE,
+          risk.table = FALSE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          linetype = "strata", # Change line type by groups
+          surv.median.line = "hv", # Specify median survival
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          palette = "Dark2"
+          ) +
+  labs(x="Time to Recurrence (Days)", y = "Time to Recurrence Probability")
+
+
+fit32 <- survfit(Surv(`Time-to-reccurence (days)`) ~ GPNMB, 
+               data = quant_annot_intr_rec)
+print(fit32)
+# Change color, linetype by strata, risk.table color by strata
+surv_p32 <- ggsurvplot(fit32,
+          pval = TRUE, 
+          conf.int = TRUE,
+          risk.table = FALSE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          linetype = "strata", # Change line type by groups
+          surv.median.line = "hv", # Specify median survival
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          palette = "Dark2"
+          ) +
+  labs(x="Time to Recurrence (Days)", y = "Time to Recurrence Probability")
+
+
+fit42 <- survfit(Surv(`Time-to-reccurence (days)`) ~ MMP9, 
+               data = quant_annot_intr_rec)
+print(fit42)
+# Change color, linetype by strata, risk.table color by strata
+surv_p42 <- ggsurvplot(fit42,
+          pval = TRUE, conf.int = TRUE,
+          risk.table = FALSE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          linetype = "strata", # Change line type by groups
+          surv.median.line = "hv", # Specify median survival
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          palette = "Dark2"
+          ) +
+  labs(x="Time to Recurrence (Days)", y = "Time to Recurrence Probability")
+```
+
+```{r}
+surv_p12
+surv_p22
+surv_p32
+surv_p42
+```
