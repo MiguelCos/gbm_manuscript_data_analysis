@@ -18,6 +18,10 @@ The reproducible report, containing code for data preprocessing, statisical anal
 
 The reproducible report, containing code for data preprocessing, statisical analysis and intermediary plots for the large-scale differential analysis of proteolytic processing in recurrent glioblastoma can be found accessed via: [proteogenomics reproducible report](https://github.com/MiguelCos/gbm_manuscript_data_analysis/blob/main/reports/gbm_recurrence_proteogenomics_manuscript_report.md)
 
+### [Analysis of Plasma ELISA Proteomics](https://github.com/MiguelCos/gbm_manuscript_data_analysis/blob/main/results/elisa_plasma_proteomics/manuscript_elisa_figure_final.pdf)
+
+To regenerate analysis for Plasma ELISA Proteomics, knit the [manuscript_elisa_figure_final.Rmd](https://github.com/MiguelCos/gbm_manuscript_data_analysis/blob/main/results/elisa_plasma_proteomics/manuscript_elisa_figure_final.Rmd) r notebook.
+
 ## Specific R functions for data processing and analysis
 
 ### Functions for peptide annotation and analysis of proteolytic processing  
@@ -36,6 +40,3 @@ Evaluates if the peptide N-term contains a TMT-tag, acetylation or if it is free
 
 After identifying a set of interesting semi-specific peptides/proteolytic products, this function was used to generate peptide sequences that catch the residues in the vicinity (i.e. 10 amino acids after and before) of the non-tryptic cleavage area. This, as a preparation for the analysis of sequence motifs. 
 
-### [Analysis of Plasma ELISA Proteomics](https://github.com/MiguelCos/gbm_manuscript_data_analysis/blob/main/results/elisa_plasma_proteomics/manuscript_elisa_figure_final.pdf)
-
-To regenerate analysis for Plasma ELISA Proteomics, knit the [manuscript_elisa_figure_final.Rmd](https://github.com/MiguelCos/gbm_manuscript_data_analysis/blob/main/results/elisa_plasma_proteomics/manuscript_elisa_figure_final.Rmd) r notebook.
