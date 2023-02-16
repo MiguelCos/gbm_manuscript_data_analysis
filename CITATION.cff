@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Cosenza-Contreras"
+  given-names: "Miguel"
+  orcid: "https://orcid.org/0000-0002-9727-3229"
+- family-names: "Sing"
+  given-names: "Justin"
+  orcid: "https://orcid.org/0000-0000-0000-0000"
+title: "gbm_manuscript_data_analysis"
+version: 1.0.2
+doi: 10.5281/zenodo.7646550
+date-released: 2023-02-16
+url: "https://github.com/MiguelCos/gbm_manuscript_data_analysis"
