@@ -1,0 +1,951 @@
+---
+title: "GBM Recurrence Proteogenomics"
+author: "Miguel Cosenza-Contreras"
+format:
+  gfm:
+    toc: true 
+    toc-depth: 4 # default is 3
+    number-sections: true
+    execute:
+      output: true
+always_allow_html: true
+editor: source
+---
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE, 
+                      message = FALSE, 
+                      warning = FALSE)
+
+source(here::here("scr/helper_functions.R"))
+
+## Required packages ----
+library(tidyverse)
+library(mixOmics)
+library(fs)
+library(kableExtra)
+library(sva)
+library(limma)
+library(naniar)
+library(missForest)
+library(clusterProfiler)
+library(ReactomePA)
+library(org.Hs.eg.db)
+library(DT)
+library(here)
+library(janitor)
+library(drawProteins)
+library(seqinr)
+library(ggpubr)
+library(ggrepel)
+library(extrafont)
+extrafont::loadfonts(device = "win")
+
+
+theme_set(theme(axis.text.x = element_text(hjust = 0.5, 
+                                           vjust = 0, 
+                                           size = 6, 
+                                           angle = 360),
+                axis.text.y = element_text(hjust = 0.5, 
+                                           vjust = 0, 
+                                           size = 6),
+                panel.background = element_blank(),
+                panel.grid.major = element_line(color = "grey"),
+                panel.border = element_rect(colour = "black", 
+                                            fill = NA, 
+                                            size = 1.5),
+                axis.title=element_text(size = 8),
+                legend.title = element_text(size = 8),
+                legend.key.height = unit(3, 
+                                         'mm'),
+                legend.key.width = unit(3, 
+                                        'mm'),
+                legend.position = "bottom",
+                text = element_text(family = "Helvetica")))
+
+```
+
+# Initial data loading and wrangling
+
+Load id/quant data and prep coverage information
+
+```{r message=FALSE}
+## tmt-integrator output loading 
+tmt_protdata_frag_progen <- read_tsv(here("data/proteogenomics/sras_cellreports_2021_paper_razor/tmt-report/abundance_protein_MD.tsv")) %>% 
+  janitor::clean_names()
+
+tmt_peptdata_frag_progen <- read_tsv(here("data/proteogenomics/sras_cellreports_2021_paper_razor/tmt-report/abundance_peptide_MD.tsv")) %>% 
+  janitor::clean_names()
+
+identified_proteins_progen <- read_tsv(here("data/proteogenomics/sras_cellreports_2021_paper_razor/combined_protein.tsv")) %>% 
+  janitor::clean_names()
+
+identified_peptides_progen <- read_tsv(here("data/proteogenomics/sras_cellreports_2021_paper_razor/combined_peptide.tsv")) %>% 
+  janitor::clean_names()
+
+index2genepeptide <- tmt_peptdata_frag_progen %>%
+  dplyr::select(index, gene, peptide, protein_id)
+```
+
+```{r}
+sample_annotation <- read_csv(here("data/sample_annotation.csv"))
+
+# correct annotation
+
+sample_annotation2 <- sample_annotation %>%
+  mutate(patient = paste("x",
+                         patient, 
+                         sep = ""),
+         recurrence = case_when(recurrence == "initial" ~ "prim",
+                                recurrence == "recurrent" ~ "rec",
+                                TRUE ~ recurrence)) %>%
+  mutate(paired_id = paste(patient, 
+                           recurrence, 
+                           sep = "_")) %>%
+  filter(recurrence %in% c("prim", 
+                           "rec"))
+
+sample_annotationwo6 <- sample_annotation2 %>%
+  filter(patient != "x6")
+```
+
+```{r}
+# wide expression matrix with NAs
+expr_matrix_progen <- dplyr::select(tmt_protdata_frag_progen,
+                             Protein = index, 
+                             starts_with("x"))
+
+long_mat_progen <- pivot_longer(expr_matrix_progen,
+                         cols = starts_with("x"),
+                         names_to = c("paired_id_semi"),
+                         values_to = "Abundance") %>%
+  mutate(recurrence = str_extract(paired_id_semi, 
+                                  "[^0-9]+$")) %>%
+  mutate(patient = str_remove_all(paired_id_semi, 
+                                  "[^0-9]+$"))
+
+long_mat_progen_2 <- long_mat_progen %>%
+  mutate(paired_id = paste(patient, 
+                           recurrence, 
+                           sep = "_")) 
+
+paired_annot_uniq_progen <- long_mat_progen_2 %>%
+  dplyr::select(patient, 
+                recurrence, 
+                paired_id) %>%
+  distinct()
+
+# wide peptide abundace matrix with NAs
+expr_matrix_pept_progen <- dplyr::select(tmt_peptdata_frag_progen,
+                             index,
+                             peptide,
+                             starts_with("x")) %>%
+  dplyr::select(!starts_with("x6"))
+
+expr_matrixnona_pept_progen <- expr_matrix_pept_progen %>%
+  na.omit()
+
+long_mat_pept_progen <- pivot_longer(expr_matrix_pept_progen,
+                         cols = starts_with("x"),
+                         names_to = c("paired_id_semi"),
+                         values_to = "Abundance") %>%
+  mutate(recurrence = str_extract(paired_id_semi, 
+                                  "[^0-9]+$")) %>%
+  mutate(patient = str_remove_all(paired_id_semi, 
+                                  "[^0-9]+$"))
+
+long_mat_pept_progen_2 <- long_mat_pept_progen %>%
+  mutate(paired_id = paste(patient, 
+                           recurrence, 
+                           sep = "_")) 
+
+paired_annot_uniq_pept_progen <- long_mat_pept_progen_2 %>%
+  dplyr::select(patient, 
+                recurrence, 
+                paired_id) %>%
+  distinct()
+
+## Annotated abundance data in long format ----
+
+quant_annotated_progen <- left_join(long_mat_progen_2,
+                             sample_annotation2) %>%
+  mutate(Channel_mix = paste(mixture,
+                             channel, 
+                             sep = "_"))
+
+quant_annotated_pept_progen <- left_join(long_mat_pept_progen_2,
+                             sample_annotation2) %>%
+  mutate(Channel_mix = paste(mixture,
+                             channel, 
+                             sep = "_"))
+
+
+## Wide xpression matrices without NAs
+expr_matnona_progen <- column_to_rownames(expr_matrix_progen,
+                            "Protein") %>%
+          as.matrix() %>%
+          na.omit()
+
+# peptide to protein mapping from combined_peptides.tsv 
+protein2peptideall <- dplyr::select(identified_peptides_progen,
+                                    protein, 
+                                    Peptide = sequence) %>% 
+          separate(col = protein,
+                   into = c("sp", 
+                            "Genes", 
+                            "ensembl"),
+                   sep = "\\|") %>%
+          dplyr::select(Genes, 
+                        Peptide) %>%
+          distinct() %>%
+          mutate(Peptide = str_remove_all(Peptide, 
+                                          "\\[.+?\\]")) %>%
+          mutate(Peptide = str_remove_all(Peptide, 
+                                          "^n"))
+
+# peptide to protein mappong from tmt abundance report (quantified and normalized)
+protein2peptide_tmtrept <- tmt_peptdata_frag_progen %>%
+  dplyr::select(index, 
+                protein_id, 
+                peptide)
+```
+
+# Localization of identified peptides and mapping to variant regions
+
+```{r}
+# list of identified peptides associated with 'variant' proteins
+var_prots <- protein2peptideall %>%
+                    mutate(variant = if_else(str_detect(Genes, 
+                                                        "\\_"),
+                           true = "variant",
+                           false = "canonical")) %>%
+                    filter(variant == "variant") %>% 
+                    pull(Genes) %>%
+                    unique()
+```
+
+```{r echo=TRUE}
+variant_peptides_1 <- filter(protein2peptideall,
+                             Genes %in% var_prots)
+
+# prep fasta containing only identified protein sequences
+fastavar <- seqinr::read.fasta(here("data/proteogenomics/sras_cellreports_2021_paper_razor/mix_1/protein.fas"), 
+                            seqtype = "AA", 
+                            as.string = TRUE)
+
+fastavar2 <- seqinr::read.fasta(here("data/proteogenomics/sras_cellreports_2021_paper_razor/mix_2/protein.fas"), 
+                            seqtype = "AA", 
+                            as.string = TRUE)
+
+fastavar3 <- seqinr::read.fasta(here("data/proteogenomics/sras_cellreports_2021_paper_razor/mix_3/protein.fas"), 
+                            seqtype = "AA", 
+                            as.string = TRUE)
+
+fasta1 <- append(fastavar,
+                fastavar2)
+
+fasta <- append(fasta1,
+                fastavar3)
+
+fasta <- discard(fasta,
+                 duplicated(names(fasta)))
+
+
+```
+
+```{r echo=TRUE}
+if(!file.exists(here("results/proteogenomics/cellreps_2021/cleavage_annoated_peptides_razor.tsv"))){
+  cleavage_annoated_peptides <- annotate_peptides(expr_mat = variant_peptides_1, 
+                                                  fasta = fasta,
+                                                  decoy_tag = "rev_")
+  
+  write_tsv(cleavage_annoated_peptides, "results/proteogenomics/cellreps_2021/cleavage_annoated_peptides_razor.tsv")
+} else {
+  cleavage_annoated_peptides <- read_tsv(here("results/proteogenomics/cellreps_2021/cleavage_annoated_peptides_razor.tsv"))
+}
+
+```
+
+## Localize peptides within protein sequence and confirm identification of SAAVs
+
+```{r echo=TRUE}
+# tabulate location of the variant
+annotated_w_variant_location <- cleavage_annoated_peptides %>%
+          as_tibble() %>%
+          mutate(protein_id_var = protein_id,
+                 variant_type = if_else(str_detect(protein_id, 
+                                                   "\\:"), 
+                                        true = "other",
+                                        false = "saav")) %>%
+          mutate(protein_id = str_replace_all(protein_id, 
+                                              "\\.", 
+                                              "\\_")) %>%
+          mutate(protein_id = str_replace_all(protein_id, 
+                                              "\\:", 
+                                              "\\_")) %>%
+          separate(protein_id, 
+                   into = c("ense_id", "variant_location"), 
+                   sep = "\\_",
+                   extra = "merge") %>%
+                    na.omit() %>%
+          mutate(variant_type = if_else(condition = str_detect(variant_location, 
+                                                               "[0-9]$"),
+                                        true = "other",
+                                        false = variant_type))
+
+# generate a long list of variant locations 
+
+locat2protdf <- annotated_w_variant_location %>%
+  separate_rows(variant_location)
+
+long2prot <- locat2protdf %>%
+          mutate(variant_num_location = readr::parse_number(variant_location))
+
+long2prot_worivar <- left_join(long2prot, 
+                               dplyr::select(annotated_w_variant_location,
+                                             protein_id_var, 
+                                             ense_id)) %>%
+  distinct()
+
+
+annotated_wo_variant_location <- annotated_w_variant_location %>%
+          dplyr::select(-variant_location)
+
+# merge long table of variant locations with the annotation of peptide position within 
+# their associated protein sequences
+
+protein2varlocat <- left_join(annotated_wo_variant_location, 
+                              long2prot_worivar) %>%
+          distinct() %>%
+          mutate(start_num = as.numeric(start_position),
+                 end_num = as.numeric(end_position)) %>%
+  # evaluate if the SAAV falls on the position of a variant sequence
+          mutate(variant_peptide = variant_num_location >= as.numeric(start_position) & variant_num_location <= as.numeric(end_position)) %>% 
+          dplyr::select(protein_id_var, 
+                        ense_id, 
+                        protein_description, 
+                        Peptide, 
+                        start_position, 
+                        start_num,
+                        end_position,
+                        end_num, 
+                        variant_location, 
+                        variant_num_location, 
+                        variant_peptide, 
+                        variant_type)
+
+pept2variant <- protein2varlocat %>%
+  dplyr::select(Peptide, 
+                variant_peptide, 
+                variant_type,
+                protein_id_var,
+                ense_id,
+                variant_location,
+                peptide_start_position = start_position,
+                peptide_end_position = end_position,
+                protein_description) %>%
+  distinct() %>%
+  na.omit() %>%
+  filter(variant_type == "saav") %>% 
+  mutate(duplicated_peptide = duplicated(Peptide)) %>% 
+  relocate(duplicated_peptide,
+           .after = variant_type)
+```
+
+## Generate table of identified peptides mapping to SAAVs
+
+```{r}
+saavs_table <- pept2variant %>%
+  filter(variant_peptide == TRUE) %>% 
+  mutate(duplicated_peptide = duplicated(Peptide)) %>% 
+  dplyr::rename(peptide = Peptide) %>%
+  left_join(., index2genepeptide) %>%
+  mutate(gene_variant = paste(gene, 
+                              variant_location, 
+                              sep = "_")) 
+  
+```
+
+```{r}
+length(unique(saavs_table$Peptide))
+```
+
+```{r}
+length(unique(saavs_table$protein_id_var))
+```
+
+```{r}
+saavs_suppl_table <- saavs_table %>% 
+  dplyr::select(gene_variant,
+                variant_type,
+                variant_location,
+                peptide,
+                peptide_start_position,
+                peptide_end_position,
+                protein_id_var,
+                ense_id,
+                gene,
+                protein_description)
+```
+
+```{r}
+write_tsv(x = saavs_suppl_table,
+          file = here("suppl_tables/supplementary_table_5_proteogenomics_identified_saavs.tsv"))
+```
+
+# Visualize quantitative features of identified SAAVs
+
+## Prep abundance matrices
+
+```{r}
+recurrencewo6 <- sample_annotationwo6$recurrence
+patientwo6 <- sample_annotationwo6$patient
+```
+
+```{r echo=FALSE}
+design_limmawo6 <- model.matrix(~patientwo6+recurrencewo6)
+
+sample_annotationwo6 <- sample_annotationwo6 %>%
+  mutate(paired_id_semi = paste(patient, 
+                                recurrence, 
+                                sep = ""))
+
+rownames(design_limmawo6) <- sample_annotationwo6$paired_id_semi
+```
+
+```{r}
+pep_prematwo6 <- dplyr::select(expr_matrix_pept_progen,
+                               index, 
+                               peptide, 
+                               rownames(design_limmawo6))  
+
+pep_matwo6 <- dplyr::select(expr_matrix_pept_progen,
+                            index, 
+                            rownames(design_limmawo6))  %>%
+  column_to_rownames("index") %>%
+  as.matrix()
+
+pep_matnona_wo6 <- pep_matwo6 %>%
+  na.omit()
+```
+
+## Filter, merge and summarize SAAV abundances
+
+```{r}
+# extract indexing, peptide and sequence information from normalized data
+index2genepeptide <- tmt_peptdata_frag_progen %>% 
+  dplyr::select(index, 
+                peptide, 
+                gene, 
+                protein_id)
+
+# table of interesting features (saavs)
+features1 <- pept2variant %>%
+  dplyr::rename(peptide = Peptide) %>%
+  left_join(., index2genepeptide) %>%
+  na.omit()
+
+interesting_features1 <- features1 %>%
+                    filter(variant_peptide == TRUE) 
+
+# data frame of identified and TMT-integrator summarized SAAVs + annotation
+protein2varlocat_saav <- protein2varlocat %>%
+  dplyr::rename(peptide = Peptide) %>%
+  filter(peptide %in% interesting_features1$peptide,
+         variant_peptide == TRUE,
+         variant_type == "saav") %>%
+  left_join(., index2genepeptide) %>%
+  mutate(gene_variant = paste(gene, 
+                              variant_location, 
+                              sep = "_")) 
+
+# mapping variant to index id
+genevariant2index <- protein2varlocat_saav %>%
+  dplyr::select(index, 
+                gene_variant)
+
+# abundance matrix of peptides mapping to variant locations
+pep_premat_variantwo6 <- filter(pep_prematwo6,
+                                peptide %in% protein2varlocat_saav$peptide) %>%
+  left_join(., genevariant2index) %>%
+  relocate(gene_variant) %>%
+  mutate(duplicated_variant = duplicated(gene_variant)) %>%
+  relocate(duplicated_variant,
+           .after = peptide)
+
+# summarize SAAVs (gene+variant location)
+# i.e. take the median abundance of all the peptides mapping to the same SAAV
+
+pep_premat_sumgenarwo6 <- pep_premat_variantwo6 %>%
+  group_by(gene_variant) %>%
+  summarise_at(vars(starts_with("x")), 
+               .funs = function(x){median(x, 
+                                          na.rm = TRUE)}) %>%
+  ungroup() 
+
+full_info_sumgenvar <- pep_premat_sumgenarwo6 %>%
+  left_join(., 
+            protein2varlocat_saav) %>%
+  filter(variant_type == "saav")
+
+pep_matvariantswo6or <- pep_premat_sumgenarwo6 %>%
+  column_to_rownames("gene_variant") %>%
+  as.matrix()
+
+pep_matvariantswo6 <- pep_premat_sumgenarwo6 %>%
+  filter(str_detect(gene_variant, 
+                    "CAP1_", 
+                    negate = TRUE)) %>%
+  column_to_rownames("gene_variant") %>%
+  as.matrix()
+
+pep_matvariantswo6nona <- pep_matvariantswo6 %>%
+  na.omit()
+```
+
+### Generate summarized results tables
+
+```{r}
+write_tsv(protein2varlocat_saav,
+          here("results/proteogenomics/cellreps_2021/all_peptides_mapping_to_saavs_gbm.tsv"))
+
+write_tsv(pep_premat_sumgenarwo6,
+          here("results/proteogenomics/cellreps_2021/summarized_median_abundance_of_saavs.tsv"))
+
+write_tsv(full_info_sumgenvar,
+          here("results/proteogenomics/cellreps_2021/summarized_median_abundance_of_saavs_full.tsv"))
+```
+
+The variant-containing peptides identified and accurately quantified and summarized are able to account for `r nrow(pep_premat_sumgenarwo6)` single amino acid mutations (SAAVs).
+
+Among these identified SAAVs, `r nrow(pep_matvariantswo6nona)` were identified in all mixtures and samples.
+
+## Heatmap of all SAAVs observed
+
+```{r}
+library(circlize)
+```
+
+```{r}
+library(ComplexHeatmap)
+```
+
+```{r}
+split_patstage <- str_split_fixed(string = colnames(pep_matvariantswo6nona), 
+                                  pattern = "[:digit:]+", 
+                                  n = 2) 
+
+patient <- str_extract(string = colnames(pep_matvariantswo6nona),
+                       pattern = "[:digit:]+")
+
+patientstage <- colnames(pep_matvariantswo6nona) %>%
+  str_replace(., 
+              pattern = "prim", 
+              replacement = "Init") %>%
+  str_replace(., 
+              pattern = "rec", 
+              replacement = "Rec")
+
+stage <- split_patstage[,2] %>%
+  if_else(condition = . == "prim",
+          true = "Initial",
+          false = "Recurrent")
+
+pep_matvariantswo6or_hm <- pep_matvariantswo6or
+pep_matvariantswo6nona_hm <- pep_matvariantswo6nona
+
+colnames(pep_matvariantswo6or_hm) <- patientstage
+colnames(pep_matvariantswo6nona_hm) <- patientstage
+```
+
+```{r fig.height=20, fig.width=7}
+col_fun_or = colorRamp2(c(min(pep_matvariantswo6or_hm, 
+                              na.rm = TRUE), 
+                       median(pep_matvariantswo6or_hm, 
+                              na.rm = TRUE), 
+                       max(pep_matvariantswo6or_hm, 
+                           na.rm = TRUE)), 
+                     c("#2a9d8f", 
+                       "white", 
+                       "red"))
+
+Heatmap(pep_matvariantswo6or_hm, 
+        col = col_fun_or,
+        column_split = stage, 
+        row_names_gp = gpar(fontsize = 5),
+        column_names_gp = gpar(fontsize = 5),
+        cluster_rows = FALSE, cluster_columns = FALSE,
+        heatmap_legend_param = list(
+        title = "log2-\nNormalized\nAbundance"
+    ))
+```
+
+All identified SAAVs
+
+```{r fig.height=20, fig.width=7}
+col_fun_or = colorRamp2(c(min(pep_matvariantswo6or_hm, 
+                              na.rm = TRUE), 
+                       median(pep_matvariantswo6or_hm, 
+                              na.rm = TRUE), 
+                       max(pep_matvariantswo6or_hm, 
+                           na.rm = TRUE)), 
+                     c("#2a9d8f", 
+                       "white", 
+                       "red"))
+
+Heatmap(pep_matvariantswo6or_hm, 
+        col = col_fun_or,
+        column_split = patient, 
+        row_names_gp = gpar(fontsize = 5.5),
+        column_names_gp = gpar(fontsize = 7),
+        cluster_rows = FALSE, cluster_columns = FALSE,
+        heatmap_legend_param = list(
+        title = "log2-\nNormalized\nAbundance"
+    ))
+```
+
+## Heatmap of SAAVs observed on every sample
+
+```{r fig.height=7.5, fig.width=7}
+col_fun_sel = colorRamp2(c(min(pep_matvariantswo6or_hm, 
+                               na.rm = TRUE), 
+                       median(pep_matvariantswo6or_hm, 
+                              na.rm = TRUE), 
+                       max(pep_matvariantswo6or_hm, 
+                           na.rm = TRUE)), 
+                     c("#2a9d8f", 
+                       "white", 
+                       "red"))
+
+
+Heatmap(pep_matvariantswo6nona_hm, 
+        col = col_fun_sel,
+        column_split = stage, 
+        row_names_gp = gpar(fontsize = 7),
+        column_names_gp = gpar(fontsize = 7),
+        heatmap_legend_param = list(
+        title = "log2-\nNormalized\nAbundance"
+    ))
+```
+
+# Limma on SAAVs
+
+## Prep design matrix
+
+```{r}
+design_limmawo6_saav <- model.matrix(~patient+stage)
+
+sample_annotationwo6 <- sample_annotationwo6 %>%
+  mutate(paired_id_semi = paste(patient, 
+                                recurrence, 
+                                sep = ""))
+
+rownames(design_limmawo6_saav) <- sample_annotationwo6$paired_id_semi
+```
+
+## Prep abundance matrices {.unnumbered .unlisted}
+
+```{r}
+colnames(pep_matvariantswo6nona)
+```
+
+```{r}
+rownames(design_limmawo6_saav)
+```
+
+## SAAV-level model fit {.unnumbered .unlisted}
+
+
+```{r echo=TRUE, warning=FALSE, message=FALSE}
+limmafit <- lmFit(pep_matvariantswo6nona, 
+                  design = design_limmawo6_saav, 
+                  method = 'robust')
+  
+limmafit <- eBayes(limmafit)
+  
+fit_mod_saavs <- topTable(limmafit, 
+                        coef = "stageRecurrent", 
+                        number = Inf, 
+                        adjust.method = "BH") %>%
+  mutate(Protein = rownames(.),
+         Limma = "Robust - w Patient effect")
+
+compar_tab_saavs <-  fit_mod_saavs %>% 
+  rownames_to_column("gene_variant") 
+```
+
+```{r}
+increased_recwo6_saavs <- compar_tab_saavs %>%
+                    filter(logFC > 0,
+                           adj.P.Val < 0.05) %>% 
+  pull(gene_variant)
+
+decreased_recwo6_saavs <- compar_tab_saavs %>%
+                    filter(logFC < 0,
+                           adj.P.Val < 0.05) %>% 
+  pull(gene_variant)
+
+```
+
+```{r}
+length(increased_recwo6_saavs)
+```
+
+```{r}
+length(decreased_recwo6_saavs)
+```
+
+Only 1 SAAV is observed as differentially abundant between Recurrent and Initial tumors.
+
+## Volcano SAAVs
+
+```{r}
+diff_saavs <- compar_tab_saavs %>%
+                    filter(adj.P.Val < 0.05)
+
+size <- 1.5
+
+volcano_saavs <- ggplot(data = compar_tab_saavs,
+                      mapping = aes(x = logFC, 
+                                    y = -log10(adj.P.Val))) +
+      geom_point(data = compar_tab_saavs %>% 
+                   filter(logFC > 0,
+                          adj.P.Val < 0.05),
+                 mapping = aes(x = logFC, 
+                               y = -log10(adj.P.Val)), 
+                 color = "red",
+                 size = size)+
+      geom_point(data = compar_tab_saavs %>% 
+                   filter(logFC < -0,
+                          adj.P.Val < 0.05),
+                 mapping = aes(x = logFC, 
+                               y = -log10(adj.P.Val)), 
+                 color = "red",
+                 size = size) +
+      geom_point(data = compar_tab_saavs %>% 
+                   filter(logFC > 0,
+                          adj.P.Val > 0.05),
+                 mapping = aes(x = logFC, 
+                               y = -log10(adj.P.Val)), 
+                 color = "#2a9d8f",
+                 size = size) +
+      geom_point(data = compar_tab_saavs %>% 
+                   filter(logFC < -0,
+                          adj.P.Val > 0.05),
+                 mapping = aes(x = logFC, 
+                               y = -log10(adj.P.Val)), 
+                 color = "#2a9d8f",
+                 size = size) +
+      geom_hline(yintercept = -log10(0.05),
+                 color = "red", 
+                 linetype = "dashed") +
+      ggrepel::geom_text_repel(data = diff_saavs,
+                               aes(label = gene_variant), 
+                               size = 4) +
+      xlab("logFC - Recurrent / Primary") + 
+      theme(axis.text.x = element_text(hjust = 0.5, 
+                                       vjust = 0, 
+                                       size = 6, 
+                                       angle = 360),
+            axis.text.y = element_text(hjust = 0.95, 
+                                       vjust = 0.2, 
+                                       size = 8),
+            panel.background = element_blank(),
+            panel.grid.major = element_blank(),
+            panel.border = element_rect(colour = "black", 
+                                        fill = NA, 
+                                        size = 0.5),
+            axis.title = element_text(size = 8),
+            legend.text = element_text(size = 6),
+            legend.title = element_text(size = 8),
+            legend.key.height = unit(3, 
+                                    'mm'),
+            legend.key.width = unit(3, 
+                                   'mm'),
+            legend.position = "bottom") 
+```
+
+```{r fig.width=8, fig.height=6}
+volcano_saavs
+```
+
+```{r echo=FALSE}
+ggsave(plot = volcano_saavs, 
+       filename = here::here("figures/volcanosaavs_proteomics_gbm.tiff"), 
+       device = "tiff",
+       units = "mm",
+       width = 63,
+       height = 50)
+
+ggsave(plot = volcano_saavs, 
+       filename = here::here("figures/volcanosaavs_proteomics_gbm.eps"), 
+       device = "eps",
+       units = "mm",
+       width = 63,
+       height = 50)
+```
+
+## Boxplot of differentially abundant SAAV
+
+```{r}
+prelongsaav <- pep_matvariantswo6nona %>%
+  as.data.frame() %>%
+  rownames_to_column("gene_variant") %>%
+   pivot_longer(cols = starts_with("x"),
+                         names_to = c("patient"),
+                         values_to = "Abundance") %>%
+  mutate(Stage = str_extract(patient, 
+                             "[^0-9]+$")) %>%
+  mutate(Patient = str_remove_all(patient, 
+                                  "[^0-9]+$")) %>%
+  filter(gene_variant == increased_recwo6_saavs)
+```
+
+```{r}
+diff_abund_saav <- ggplot(prelongsaav, 
+                    aes(x = Stage, 
+                        y = Abundance, 
+                        fill = Stage, 
+                        cex.axis = 1.5)) +
+  geom_boxplot() +
+  geom_dotplot(binaxis = "y", 
+               stackdir = "center", 
+               dotsize = 0.2) +
+  # Box plot with jittered points
+  # 0.2 : degree of jitter in x direction
+  # geom_jitter(shape=16, position=position_jitter(0.2))
+  ylab("log2-Normalized Abundance") +
+  geom_signif(
+    comparisons = list(c("Initial", 
+                         "Recurrence")),
+    map_signif_level = TRUE
+  ) + 
+  stat_compare_means(method="t.test") +
+  ggtitle(increased_recwo6_saavs) +
+  theme(axis.text.x = element_text(hjust = 0.5, 
+                                   vjust = 0, 
+                                   size = 6, 
+                                   angle = 360),
+        axis.text.y = element_text(hjust = 0.95, 
+                                   vjust = 0.2, 
+                                   size = 8),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.border = element_rect(colour = "black", 
+                                    fill = NA, 
+                                    size = 0.5),
+        axis.title = element_text(size = 8),
+        legend.text = element_text(size = 6),
+        legend.title = element_text(size = 8),
+        legend.key.height = unit(3, 
+                                'mm'),
+        legend.key.width = unit(3, 
+                               'mm'),
+        legend.position = "bottom") 
+  
+```
+
+## Boxplot DA SAAV
+
+```{r}
+  slim_data2saav <- pivot_wider(prelongsaav %>% dplyr::select(-patient), 
+                          values_from = Abundance, 
+                          names_from = Stage) 
+
+  slim_data3saav <- slim_data2saav %>% 
+    mutate(Abs_diff = rec-prim) %>%
+    mutate(rank = row_number(Abs_diff)) %>% 
+    dplyr::rename(Initial = prim, 
+                  Recurrent = rec) %>%
+    ungroup() 
+
+```
+
+```{r fig.width=7, fig.height=3.5}
+ggpaired(slim_data3saav,
+         cond1 = "Initial",
+         cond2 = "Recurrent", 
+         fill = "condition",
+         ylab = "log2-Normalized Abundance",
+         label = NULL,
+         repel = TRUE, 
+         point.size = 0.2, 
+         line.size = 0.1) +
+      theme(axis.text.x = element_text(hjust = 0.5, 
+                                       vjust = 0,
+                                       size = 5, 
+                                       angle = 360),
+            axis.text.y = element_text(hjust = 0.95, 
+                                       vjust = 0.2, 
+                                       size = 5),
+            panel.background = element_blank(),
+            panel.grid.major = element_blank(),
+            panel.border = element_rect(colour = "black", 
+                                        fill = NA, 
+                                        size = 0.5),
+            axis.title = element_text(size = 8),
+            legend.text = element_text(size = 6),
+            legend.title = element_text(size = 8),
+            legend.key.height= unit(3, 
+                                    'mm'),
+            legend.key.width= unit(3, 
+                                   'mm'),
+            legend.position = "bottom",
+            strip.text = element_text(hjust = 0.5, 
+                                      vjust = 0, 
+                                      size = 8, 
+                                      angle = 360)) + 
+  ggtitle(increased_recwo6_saavs)
+```
+
+```{r}
+paired_box_saavs <- ggpaired(slim_data3saav,
+         cond1 = "Initial",
+         cond2 = "Recurrent", 
+         fill = "condition",
+         ylab = "log2-Normalized Abundance",
+         label = NULL,
+         repel = TRUE, 
+         point.size = 0.2, 
+         line.size = 0.1) +
+      theme(axis.text.x = element_text(hjust = 0.5, 
+                                       vjust = 0, 
+                                       size = 5, 
+                                       angle = 360),
+            axis.text.y = element_text(hjust = 0.95, 
+                                       vjust = 0.2, 
+                                       size = 5),
+            panel.background = element_blank(),
+            panel.grid.major = element_blank(),
+            panel.border = element_rect(colour = "black", 
+                                        fill = NA, 
+                                        size = 0.5),
+            axis.title = element_text(size = 8),
+            legend.text = element_text(size = 6),
+            legend.title = element_text(size = 8),
+            legend.key.height = unit(3, 
+                                    'mm'),
+            legend.key.width = unit(3, 
+                                   'mm'),
+            legend.position = "bottom",
+            strip.text = element_text(hjust = 0.5, 
+                                      vjust = 0, 
+                                      size = 8, 
+                                      angle = 360)) 
+```
+
+```{r echo=FALSE}
+ggsave(plot = paired_box_saavs, 
+       filename = here::here("figures/paired_box_saav_gbm.tiff"), 
+       device = "tiff",
+       units = "mm",
+       width = 61,
+       height = 50)
+
+ggsave(plot = paired_box_saavs, 
+       filename = here::here("figures/paired_box_saav_gbm.eps"), 
+       device = "eps",
+       units = "mm",
+       width = 61,
+       height = 50)
+```
