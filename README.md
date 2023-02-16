@@ -1,8 +1,24 @@
 # Reproducible Data Analysis for the Manuscript 'Quantitative Proteomics Highlights Enrichment of key proteins in Recurrent Glioblastoma'
 
-## Reproducible report:
+## Reproducible reports:
 
-The general data analysis and processing of the search results after peptide/protein identification and quantitation can be accessed via the [reproducible report](https://github.com/MiguelCos/gbm_manuscript_data_analysis/blob/main/scr/gbm_proteomics_data_analysis_proteolytic_products_prep_figures_v3_gh_format.md) in this repo. 
+### General Proteomics analysis
+
+The general data analysis and processing of the search results after peptide/protein identification and quantitation can be accessed via the [general proteomics reproducible report](https://github.com/MiguelCos/gbm_manuscript_data_analysis/blob/main/reports/gbm_recurrence_general_proteomics_manuscript_report.md) in this repo. 
+
+### Large scale analyses of proteolytic processing
+
+The reproducible report, containing code for data preprocessing, statisical analysis and intermediary plots for the large-scale differential analysis of proteolytic processing in recurrent glioblastoma can be found accessed via: [large-scalge proteolytic processing analysis reproducible report](https://github.com/MiguelCos/gbm_manuscript_data_analysis/blob/main/reports/gbm_recurrence_large_scale_proteolysis_manuscript_report.md)
+
+### Integrative lipidomics and proteomics  
+
+The reproducible report, containing code for data preprocessing, statisical analysis and intermediary plots for the large-scale differential analysis of proteolytic processing in recurrent glioblastoma can be found accessed via: [integrative lipidomics+proteomics reproducible report](https://github.com/MiguelCos/gbm_manuscript_data_analysis/blob/main/reports/gbm_recurrence_lipidomics_analysis.md)
+
+### Proteogenomics analyses
+
+The reproducible report, containing code for data preprocessing, statisical analysis and intermediary plots for the large-scale differential analysis of proteolytic processing in recurrent glioblastoma can be found accessed via: [proteogenomics reproducible report](https://github.com/MiguelCos/gbm_manuscript_data_analysis/blob/main/reports/gbm_recurrence_proteogenomics_manuscript_report.md)
+
+## Specific R functions for data processing and analysis
 
 ### Functions for peptide annotation and analysis of proteolytic processing  
 
@@ -15,10 +31,6 @@ Used to map peptides to their corresponding protein in a fasta file and annotate
 #### [Annotate N-term](https://github.com/MiguelCos/gbm_manuscript_data_analysis/blob/main/scr/annotate_nterm.R):
 
 Evaluates if the peptide N-term contains a TMT-tag, acetylation or if it is free. 
-
-#### [Feature-specific FDR correction](https://github.com/MiguelCos/gbm_manuscript_data_analysis/blob/main/scr/feature_specific_fdr_correction.R):
-
-After fitting the peptide-level linear model with limma, this function applies FDR correction on specific features of interest. In our case, we focus on semi-specific peptides. We based this approach on the notions of Bourgon et al. 2010 [10.1073/pnas.0914005107](https://doi.org/10.1073/pnas.0914005107).
 
 #### [Get cleavage area](https://github.com/MiguelCos/gbm_manuscript_data_analysis/blob/main/scr/get_cleavage_area.R):
 
