@@ -1,5 +1,7 @@
 # Reproducible Data Analysis for the Manuscript 'Quantitative Proteomics Highlights Enrichment of key proteins in Recurrent Glioblastoma'
 
+[![DOI](https://zenodo.org/badge/427062720.svg)](https://zenodo.org/badge/latestdoi/427062720)
+
 ## Reproducible reports:
 
 ### General Proteomics analysis
