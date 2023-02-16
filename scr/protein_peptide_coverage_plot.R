@@ -15,6 +15,7 @@ get_coverage <- function(annotated_peptides, id){
     dplyr::mutate(order = 1)
   
 }
+
 add_peptides <- function(feature_df,
                          peptide_coverage_data){
   
@@ -33,6 +34,7 @@ add_peptides <- function(feature_df,
   return(wpept_features)
   
 }
+
 draw_peptides <- function(p, data){
   data$order <- 1.4
   p + ggplot2::geom_rect(data = data,

@@ -1,0 +1,8 @@
+protein_id	protein_description	protein_length	Peptide	start_position	end_position	last_aa	aa_after	aa_before	following_10_resid	previous_10_resid	semi_type	general_position	specificity	is_terminal	Genes	cleave_area	cleave_area20
+Q14956	Transmembrane glycoprotein NMB	572	SSDETFLK	250	257	K	D	N	DLPIMFDVLI	VTMFQKNDRN	semi_Nterm	not_terminal	semi_specific	not_terminal	Q14956	VTMFQKNDRNSSDETFLKDLPIMFDVLI	VTMFQKNDRNSSDETFLKDL
+Q14956	Transmembrane glycoprotein NMB	572	AAAPGPCPPPP	317	327	P	P	K	PPPRPSKPTP	GTFSLNLTVK	semi_Cterm	not_terminal	semi_specific	not_terminal	Q14956	GTFSLNLTVKAAAPGPCPPPPPPPRPSKPTP	AAPGPCPPPPPPPRPSKPTP
+Q14956	Transmembrane glycoprotein NMB	572	AAAPGPCPPPPP	317	328	P	P	K	PPRPSKPTPS	GTFSLNLTVK	semi_Cterm	not_terminal	semi_specific	not_terminal	Q14956	GTFSLNLTVKAAAPGPCPPPPPPPRPSKPTPS	APGPCPPPPPPPRPSKPTPS
+Q14956	Transmembrane glycoprotein NMB	572	DVYVVTDQIPVFVTM	228	242	M	F	K	FQKNDRNSSD	RAYVPIAQVK	semi_Cterm	not_terminal	semi_specific	not_terminal	Q14956	RAYVPIAQVKDVYVVTDQIPVFVTMFQKNDRNSSD	TDQIPVFVTMFQKNDRNSSD
+Q14956	Transmembrane glycoprotein NMB	572	DVYVVTDQIPVFVTMFQKN	228	246	N	D	K	DRNSSDETFL	RAYVPIAQVK	semi_Cterm	not_terminal	semi_specific	not_terminal	Q14956	RAYVPIAQVKDVYVVTDQIPVFVTMFQKNDRNSSDETFL	PVFVTMFQKNDRNSSDETFL
+Q14956	Transmembrane glycoprotein NMB	572	AAAPGPCPPP	317	326	P	P	K	PPPPRPSKPT	GTFSLNLTVK	semi_Cterm	not_terminal	semi_specific	not_terminal	Q14956	GTFSLNLTVKAAAPGPCPPPPPPPRPSKPT	AAAPGPCPPPPPPPRPSKPT
+Q14956	Transmembrane glycoprotein NMB	572	YGHFQATITIVEG	374	386	G	I	R	ILEVNIIQMT	IPDENCQINR	semi_Cterm	not_terminal	semi_specific	not_terminal	Q14956	IPDENCQINRYGHFQATITIVEGILEVNIIQMT	FQATITIVEGILEVNIIQMT

@@ -153,3 +153,172 @@ our_volcano <- function(dataarg,
   return(volcano)
   
 }
+
+## Function to select proteins to exclude because are missing in 2 out of 3 batches ----
+
+sel_proteins_missing <- function(long_matrix,
+                                 threshold) {
+  
+  na_count <- group_by(long_matrix,
+                       Protein, mixture) %>%
+    summarise(na_count = sum(is.na(Abundance)),
+              total = n()) %>% 
+    ungroup() %>% 
+    mutate(NA_fraction = na_count/total)
+  
+  na_count_perbatch <- na_count %>%
+    group_by(Protein) %>%
+    summarise(na_per_batch = sum(NA_fraction)) %>%
+    ungroup()
+  
+  proteins2exclude <- na_count_perbatch %>%
+    filter(na_per_batch > threshold) %>%
+    pull(Protein)
+  
+  return(proteins2exclude)
+}  
+
+## Label N-terminal peptide modifications
+
+annotate_nterm <- function(peptidestsv, # peptide.tsv table
+                           tmtmass = 304.2072, # either 304.2072 for 16plex or 229.1629 for 10/11plex
+                           protease_specificity = "R|K") # or R for argc 
+{
+  
+  require(dplyr)
+  require(stringr)
+  
+  if (tmtmass == 304.2072){
+    
+    nterm_tmt <- "N-term\\(304.2072\\)"
+    ktmt <- "K\\(304.2072\\)"
+    
+  } else if (tmtmass == 229.1629){
+    
+    nterm_tmt <- "N-term\\(229.1629\\)"
+    ktmt <- "K\\(229.1629\\)"                    
+    
+  } else {
+    
+    error("Please check your tmtmass argument input.")
+    
+  }
+  
+  nterm_annotated <- peptidestsv %>% 
+    mutate(nterm = case_when(str_detect(assigned_modifications, 
+                                        nterm_tmt) ~ "TMT-labelled",
+                             str_detect(assigned_modifications, 
+                                        "N-term\\(42.0106\\)") ~ "acetylated",
+                             TRUE ~ "free")) %>%
+    mutate(tmt_tag = case_when(str_detect(assigned_modifications, 
+                                          nterm_tmt) ~ "nterm",
+                               str_detect(assigned_modifications, 
+                                          ktmt) ~ "lysine",
+                               str_detect(assigned_modifications, 
+                                          ktmt,
+                                          negate = TRUE) & str_detect(assigned_modifications, 
+                                                                      "N-term\\(42.0106\\)") ~ "untagged_acetylated",
+                               str_detect(assigned_modifications, 
+                                          ktmt,
+                                          negate = TRUE) & nterm == "acetylated" ~ "untagged_acetylated",
+                               str_detect(assigned_modifications, 
+                                          ktmt,
+                                          negate = TRUE) & nterm == "free" ~ "untagged_free",
+                               TRUE ~ "untagged"))
+  
+  return(nterm_annotated)
+  
+}
+
+### limma fit for proteolytic products ----
+
+fit_limmapeptwo6 <- function(mat, design, method,Limma){
+  limmafit <- lmFit(mat, design, method = method)
+  limmafit <- eBayes(limmafit)
+  limma_tab <- topTable(limmafit, coef = "recurrencewo6rec", number = Inf, adjust.method = "BH") %>%
+    mutate(Protein = rownames(.),
+           Limma = Limma)
+  
+  return(limma_tab)
+}
+
+### limma fit for semi-specific to proteome correlation plot ----
+
+fit_limmawo6_tryp <- function(mat, design, method,Limma, prot2gene){
+  limmafit <- lmFit(mat, design, method = method)
+  limmafit <- eBayes(limmafit)
+  limma_tab <- topTable(limmafit, coef = "recurrencerec", number = Inf, adjust.method = "BH") %>%
+    mutate(Protein = rownames(.),
+           Limma = Limma)
+  
+  limma_tab <- left_join(limma_tab, prot2gene)
+  
+  return(limma_tab)
+}
+
+## prep peptides for differential amino acid usage -----
+
+prep_peptides <- function(x){
+  
+  increased <- filter(x,
+                      Peptide %in% list_result$increased) 
+  
+  
+  decreased <- filter(x,
+                      Peptide %in% list_result$decreased)  
+  
+  increased_4_ice <- increased %>%
+    pull(cleave_area20)
+  
+  decreased_4_ice <- decreased %>%
+    pull(cleave_area20)
+  
+  form_peptidesincreased_4ice <- formatSequence(increased_4_ice, 
+                                                proteome = proteome_ided)
+  
+  form_peptidesdecreased_4ice <- formatSequence(decreased_4_ice, 
+                                                proteome = proteome_ided)
+  
+  bg_mod_ztest_increased <- buildBackgroundModel(form_peptidesincreased_4ice,
+                                                 proteome = proteome_ided,
+                                                 background = "wholeProteome",
+                                                 testType = "ztest")
+  
+  bg_mod_ztest_decreased <- buildBackgroundModel(form_peptidesdecreased_4ice,
+                                                 proteome = proteome_ided,
+                                                 background = "wholeProteome",
+                                                 testType = "ztest")
+  
+  result_prep2logo <- list(increased = increased,
+                           decreased = decreased,
+                           increased_4_ice = increased_4_ice,
+                           decreased_4_ice = decreased_4_ice,
+                           form_peptidesincreased_4ice = form_peptidesincreased_4ice,
+                           form_peptidesdecreased_4ice = form_peptidesdecreased_4ice,
+                           bg_mod_ztest_increased = bg_mod_ztest_increased,
+                           bg_mod_ztest_decreased = bg_mod_ztest_decreased,
+                           name = x)
+  
+}
+
+## pre_icelogo_peptides ----
+
+prep_peptides_min <- function(x, 
+                              proteome_ided = proteome_ided){
+  
+  # x = peptides from cleavage_area_20 (20 aa length, cleave site in the middle)
+  
+  form_peptides_4ice <- formatSequence(x, 
+                                       proteome = proteome_ided)
+  
+  bg_mod_ztest <- buildBackgroundModel(form_peptides_4ice,
+                                       proteome = proteome_ided,
+                                       background = "wholeProteome",
+                                       testType = "ztest")
+  
+  result_prep2logo <- list(cleavage_areas20 = x,
+                           form_peptides_4ice = form_peptides_4ice,
+                           bg_mod_ztest = bg_mod_ztest)
+  
+}
+
