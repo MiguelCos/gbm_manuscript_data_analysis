@@ -24,6 +24,10 @@ The reproducible report, containing code for data preprocessing, statisical anal
 
 To regenerate analysis for Plasma ELISA Proteomics, knit the [manuscript_elisa_figure_final.Rmd](https://github.com/MiguelCos/gbm_manuscript_data_analysis/blob/main/results/elisa_plasma_proteomics/manuscript_elisa_figure_final.Rmd) r notebook.
 
+### Single-cell RNAseq data mining
+
+We mined the single-cell RNAseq dataset on recurrent GBM [GSM4972210](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM4972210), to explore the expression of ASAH1 by annotated cell type. Reproducible report available [here](https://github.com/MiguelCos/gbm_manuscript_data_analysis/blob/main/reports/gbm_recurrence_mine_single_cell_data_visualization.md)
+
 ## Specific R functions for data processing and analysis
 
 ### Functions for peptide annotation and analysis of proteolytic processing  
