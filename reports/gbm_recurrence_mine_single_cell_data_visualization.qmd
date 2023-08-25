@@ -56,10 +56,6 @@ Load the annotation with ASAH1 expression data
 annotated_with_asah1 <- readRDS(here::here("rds/long_cpm_scrnaseq_asah1_annot.rds"))
 ```
 
-```{r}
-View(annotated_with_asah1)
-```
-
 # Generate scatter plot
 
 ```{r}
@@ -81,8 +77,6 @@ cell_type_centroid <- annotated_with_asah1 %>%
   summarise(x = mean(x), 
             y = mean(y)) %>%
   ungroup()
-
-  cell_type_centroid
 ```
 
 ```{r}
@@ -102,10 +96,6 @@ umap_cell_type <- ggplot(annotated_with_asah1,
        y = "UMAP_2", 
        color = "Cell type") +
   theme(legend.position = "bottom") 
-```
-
-```{r}
-umap_cell_type
 ```
 
 ```{r}

@@ -83,10 +83,6 @@ Load the annotation with ASAH1 expression data
 annotated_with_asah1 <- readRDS(here::here("rds/long_cpm_scrnaseq_asah1_annot.rds"))
 ```
 
-``` r
-View(annotated_with_asah1)
-```
-
 # Generate scatter plot
 
 ``` r
@@ -108,27 +104,7 @@ cell_type_centroid <- annotated_with_asah1 %>%
   summarise(x = mean(x), 
             y = mean(y)) %>%
   ungroup()
-
-  cell_type_centroid
 ```
-
-    # A tibble: 14 × 3
-       cluster                x       y
-       <chr>              <dbl>   <dbl>
-     1 B cells            -1.41  -3.00 
-     2 DC 1               15.5    2.95 
-     3 DC 2                3.52   4.13 
-     4 DC 3               17.8    3.63 
-     5 DC 4               12.9   13.3  
-     6 Mast cells         -9.44   0.467
-     7 Monocytes           3.11   6.80 
-     8 NK cells           13.8   -1.92 
-     9 Plasma B           21.5    0.604
-    10 Regulatory T cells 12.1  -11.0  
-    11 T cells            10.3   -7.51 
-    12 TAM 1               8.53   5.85 
-    13 TAM 2               8.02   1.23 
-    14 prol. TAM          12.8    3.57 
 
 ``` r
 umap_cell_type <- ggplot(annotated_with_asah1, 
@@ -150,12 +126,6 @@ umap_cell_type <- ggplot(annotated_with_asah1,
 ```
 
 ``` r
-umap_cell_type
-```
-
-![](gbm_recurrence_mine_single_cell_data_visualization_files/figure-gfm/unnamed-chunk-7-1.png)
-
-``` r
 umap_grid <- plot_grid(umap_cell_type, 
                        umap_asah1_expr, 
                        ncol = 2)
@@ -165,7 +135,7 @@ umap_grid <- plot_grid(umap_cell_type,
 umap_grid
 ```
 
-![](gbm_recurrence_mine_single_cell_data_visualization_files/figure-gfm/unnamed-chunk-9-1.png)
+![](gbm_recurrence_mine_single_cell_data_visualization_files/figure-gfm/unnamed-chunk-7-1.png)
 
 ``` r
 ggsave(here::here("figures/umap_grid_asah1_expression_scRNAseq.pdf"), 
