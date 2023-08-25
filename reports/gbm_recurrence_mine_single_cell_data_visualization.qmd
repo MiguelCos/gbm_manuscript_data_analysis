@@ -1,0 +1,140 @@
+---
+title: "GBM Recurrence - Mine Single Cell data"
+author: "Miguel Cosenza-Contreras"
+format:
+  gfm:
+    toc: true 
+    toc-depth: 4 # default is 3
+    number-sections: true
+    execute:
+      output: true
+always_allow_html: true
+editor: source
+---
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE, 
+                      message = FALSE, 
+                      warning = FALSE)
+
+## Required packages ----
+library(tidyverse)
+library(ggpubr)
+library(ggrepel)
+library(cowplot)
+
+
+theme_set(theme(axis.text.x = element_text(hjust = 0.5, 
+                                           vjust = 0, 
+                                           size = 12, 
+                                           angle = 360),
+                axis.text.y = element_text(hjust = 0.5, 
+                                           vjust = 0, 
+                                           size = 12),
+                panel.background = element_blank(),
+                panel.grid.major = element_line(color = "grey"),
+                panel.border = element_rect(colour = "black", 
+                                            fill = NA, 
+                                            linewidth = 1.5),
+                axis.title=element_text(size = 12),
+                legend.title = element_text(size = 12),
+                legend.text = element_text(size = 11),
+                legend.key.height = unit(4, 
+                                         'mm'),
+                legend.key.width = unit(4, 
+                                        'mm'),
+                legend.key.size = unit(10,
+                                        'mm'),
+                legend.position = "bottom"))
+```
+
+# Initial data loading and wrangling
+
+Load the annotation with ASAH1 expression data
+
+```{r}
+annotated_with_asah1 <- readRDS(here::here("rds/long_cpm_scrnaseq_asah1_annot.rds"))
+```
+
+```{r}
+View(annotated_with_asah1)
+```
+
+# Generate scatter plot
+
+```{r}
+umap_asah1_expr <- ggplot(annotated_with_asah1, 
+       aes(x = x, 
+           y = y, 
+           color = asah1_expression)) +
+  geom_point(alpha = 0.5) +
+  scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "UMAP_1", 
+       y = "UMAP_2", 
+       color = "ASAH1 expression\n[log2(CPM)]") +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+cell_type_centroid <- annotated_with_asah1 %>%
+  group_by(cluster) %>%
+  summarise(x = mean(x), 
+            y = mean(y)) %>%
+  ungroup()
+
+  cell_type_centroid
+```
+
+```{r}
+umap_cell_type <- ggplot(annotated_with_asah1, 
+       aes(x = x, 
+           y = y, 
+           color = cluster)) +
+  geom_point(alpha = 0.5) +
+  geom_text(data = cell_type_centroid, 
+            aes(x = x, 
+                y = y, 
+                label = cluster), 
+            size = 5,
+            color = "black") +
+  #scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "UMAP_1", 
+       y = "UMAP_2", 
+       color = "Cell type") +
+  theme(legend.position = "bottom") 
+```
+
+```{r}
+umap_cell_type
+```
+
+```{r}
+umap_grid <- plot_grid(umap_cell_type, 
+                       umap_asah1_expr, 
+                       ncol = 2)
+```
+
+```{r fig.width=20, fig.height=10}
+umap_grid
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_asah1_expression_scRNAseq.pdf"), 
+       umap_grid, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_asah1_expression_scRNAseq.png"), 
+       umap_grid, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+```{r}
+dev.off()
+```
+

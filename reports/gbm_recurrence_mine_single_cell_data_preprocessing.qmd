@@ -1,0 +1,153 @@
+---
+title: "GBM Recurrence - Mine Single Cell data"
+author: "Miguel Cosenza-Contreras"
+format:
+  gfm:
+    toc: true 
+    toc-depth: 4 # default is 3
+    number-sections: true
+    execute:
+      output: true
+always_allow_html: true
+editor: source
+---
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE, 
+                      message = FALSE, 
+                      warning = FALSE)
+
+source(here::here("scr/helper_functions.R"))
+
+## Required packages ----
+library(tidyverse)
+library(mixOmics)
+library(fs)
+library(kableExtra)
+library(sva)
+library(limma)
+library(naniar)
+library(missForest)
+library(clusterProfiler)
+library(ReactomePA)
+library(org.Hs.eg.db)
+library(DT)
+library(here)
+library(janitor)
+library(drawProteins)
+library(seqinr)
+library(ggpubr)
+library(ggrepel)
+library(extrafont)
+extrafont::loadfonts(device = "win")
+
+
+theme_set(theme(axis.text.x = element_text(hjust = 0.5, 
+                                           vjust = 0, 
+                                           size = 6, 
+                                           angle = 360),
+                axis.text.y = element_text(hjust = 0.5, 
+                                           vjust = 0, 
+                                           size = 6),
+                panel.background = element_blank(),
+                panel.grid.major = element_line(color = "grey"),
+                panel.border = element_rect(colour = "black", 
+                                            fill = NA, 
+                                            size = 1.5),
+                axis.title=element_text(size = 8),
+                legend.title = element_text(size = 8),
+                legend.key.height = unit(3, 
+                                         'mm'),
+                legend.key.width = unit(3, 
+                                        'mm'),
+                legend.position = "bottom",
+                text = element_text(family = "Helvetica")))
+```
+
+# Initial data loading and wrangling
+
+Load the matrix and annotation 
+
+```{r}
+annot_1 <- read_csv(here::here("data/revision_single_cell_data/annot_Human_R_GBM_Full.csv"))
+
+annot_2_ncbi <- read_csv(here::here("data/revision_single_cell_data/from_ncbi/GSM4972210_annot.Human.GBM.R1_2_3_4_4nc.csv.gz"))
+
+# matrix data
+
+matrix_ncbi <- read_csv(here::here("data/revision_single_cell_data/from_ncbi/GSM4972210_Human.GBM.R1_2_3_4_4nc.filtered.gene.bc.matrix.csv"))
+```
+
+```{r}
+View(annot_1)
+#View(annot_2_ncbi)
+#View(matrix_ncbi)
+```
+
+```{r}
+#head(str(matrix_ncbi))
+#names(matrix_ncbi)[1]
+```
+
+# Normalize (CPM)
+
+```{r}
+library(scuttle)
+```
+
+# log2 transform 
+
+```{r}
+matrix_ncbi <- matrix_ncbi %>%
+  dplyr::rename('gene' = '...1') %>%
+  column_to_rownames("gene") %>% 
+  as.matrix()
+```
+
+```{r}
+cpm_mat <- calculateCPM(matrix_ncbi)
+mat_cpm_log2 <- log2(cpm_mat + 1)
+rm(cpm_mat)
+```
+
+```{r}
+mat_cpm_log2[1:15, 1:15]
+```
+
+# Wrangle 
+
+```{r}
+mat_cpm_df <- mat_cpm_log2 %>% 
+  as.data.frame() %>%
+  rownames_to_column("gene") %>%
+  relocate(gene, everything()) 
+```
+
+```{r}
+# ASAH1 expression
+mat_log2_df_asah1 <- mat_cpm_df %>%
+  filter(gene == "ASAH1")
+```
+
+```{r}
+long_log2_df_asah1 <- mat_log2_df_asah1 %>%
+  pivot_longer(cols = -gene, 
+               names_to = "cell", 
+               values_to = "asah1_expression") 
+```
+
+Merge with annotation
+
+```{r}
+long_log2_df_asah1_annot <- long_log2_df_asah1 %>%
+  left_join(annot_1, by = c("cell" = "cell"))
+```
+
+```{r}
+#View(long_log2_df_asah1_annot)
+```
+
+```{r}
+saveRDS(long_log2_df_asah1_annot,
+        here::here("rds/long_cpm_scrnaseq_asah1_annot.rds"))
+```
