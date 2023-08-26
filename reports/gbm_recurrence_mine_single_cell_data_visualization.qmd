@@ -159,7 +159,7 @@ umap_grid_w_violin <- plot_grid(umap_cell_type,
                                 ncol = 2)
 ```
 
-```{r fig.width=20, fig.height=10}
+```{r fig.width=20, fig.height=20}
 umap_grid_w_violin
 ```
 

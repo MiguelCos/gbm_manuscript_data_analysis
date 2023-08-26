@@ -8,6 +8,8 @@ Miguel Cosenza-Contreras
   wrangling</a>
 - <a href="#generate-scatter-plot" id="toc-generate-scatter-plot"><span
   class="toc-section-number">2</span> Generate scatter plot</a>
+- <a href="#violin-plot" id="toc-violin-plot"><span
+  class="toc-section-number">3</span> Violin plot</a>
 
 ``` r
 knitr::opts_chunk$set(echo = TRUE, 
