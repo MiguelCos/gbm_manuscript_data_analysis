@@ -1,0 +1,261 @@
+---
+title: "GBM Recurrence Proteogenomics - MINDY assoc. with TTR"
+author: "Miguel Cosenza-Contreras"
+format:
+  gfm:
+    toc: true 
+    toc-depth: 4 # default is 3
+    number-sections: true
+    execute:
+      output: true
+always_allow_html: true
+editor: source
+---
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE, 
+                      message = FALSE, 
+                      warning = FALSE)
+
+source(here::here("scr/helper_functions.R"))
+
+## Required packages ----
+library(tidyverse)
+library(mixOmics)
+library(fs)
+library(kableExtra)
+library(sva)
+library(limma)
+library(naniar)
+library(missForest)
+library(clusterProfiler)
+library(ReactomePA)
+library(org.Hs.eg.db)
+library(DT)
+library(here)
+library(janitor)
+library(drawProteins)
+library(seqinr)
+library(ggpubr)
+library(ggrepel)
+library(extrafont)
+extrafont::loadfonts(device = "win")
+
+
+theme_set(theme(axis.text.x = element_text(hjust = 0.5, 
+                                           vjust = 0, 
+                                           size = 6, 
+                                           angle = 360),
+                axis.text.y = element_text(hjust = 0.5, 
+                                           vjust = 0, 
+                                           size = 6),
+                panel.background = element_blank(),
+                panel.grid.major = element_line(color = "grey"),
+                panel.border = element_rect(colour = "black", 
+                                            fill = NA, 
+                                            size = 1.5),
+                axis.title=element_text(size = 8),
+                legend.title = element_text(size = 8),
+                legend.key.height = unit(3, 
+                                         'mm'),
+                legend.key.width = unit(3, 
+                                        'mm'),
+                legend.position = "bottom",
+                text = element_text(family = "Helvetica")))
+
+```
+
+# Get MINDY expression data
+
+Load SAAV abundance matrix 
+
+```{r}
+saav_abund_mat <- read_tsv(here("results/proteogenomics/cellreps_2021/summarized_median_abundance_of_saavs.tsv"))
+```
+
+```{r}
+saav_abund_long <- saav_abund_mat %>% 
+    pivot_longer(cols = -gene_variant, 
+                 names_to = "sample_label", 
+                 values_to = "MINDY1_T433K") %>% 
+    mutate(recurrence = case_when(str_detect(sample_label, "prim") ~ "prim",
+                                  str_detect(sample_label, "rec") ~ "rec",
+                                  TRUE ~ "NA"),
+           patient = case_when(str_detect(sample_label, "prim") ~ str_replace(sample_label, "prim", ""),
+                                 str_detect(sample_label, "rec") ~ str_replace(sample_label, "rec", ""),
+                                 TRUE ~ "NA")) %>%
+    mutate(paired_id = paste(patient, 
+                             recurrence, 
+                             sep = "_")) %>%
+    dplyr::distinct() %>%
+    filter(gene_variant %in% c("FAM63A_T433K")) 
+```
+
+# Associate MYNDY expression with Time to Recurrence
+
+## Load and prepare patient data
+
+```{r echo=FALSE}
+patient_file <- here("data/Patients_information_FINAL.xlsx")
+patient_table <- readxl::read_xlsx(path = patient_file)
+```
+
+```{r}
+patients_proteomics <- patient_table %>%
+  filter(`Mass Spectrometry` == "X") %>%
+  mutate(latency = parse_number(`Latency (days)`), 
+         status = case_when(str_detect(`Latency (days)`, "alive") ~ 1,
+                            TRUE ~ 2)) %>%
+  dplyr::select(Sex, 
+                `Age at surgery (years)`, 
+                `Time-to-reccurence (days)`,
+                latency,
+                status,
+                `Type of resection`,
+                `Tumor localization`, 
+                Treatment,
+                sample_id = `LAB-ID`) %>%
+  mutate(`Time-to-reccurence (days)` = as.numeric(`Time-to-reccurence (days)`))
+```
+
+## Sample annotation 
+
+```{r}
+sample_annotation <- read_csv(here("data/sample_annotation.csv"))
+
+sample_annotation2 <- sample_annotation %>%
+  mutate(patient = paste("x", 
+                         patient, 
+                         sep = ""),
+         recurrence = case_when(recurrence == "initial" ~ "prim",
+                                recurrence == "recurrent" ~ "rec",
+                                TRUE ~ recurrence)) %>%
+  mutate(paired_id = paste(patient, 
+                           recurrence, 
+                           sep = "_")) %>%
+  filter(recurrence %in% c("prim", 
+                           "rec"))
+```
+
+## What's the association of MINDY1_T433K at Initial stage with time to recurrence?
+
+```{r}
+quant_annot_intr_init <- saav_abund_long %>%
+    left_join(sample_annotation2) %>%
+    left_join(patients_proteomics) %>%
+    filter(!is.na(`Time-to-reccurence (days)`)) %>% 
+    dplyr::mutate(MINDY1_T433K_abundance = ifelse(MINDY1_T433K >= mean(MINDY1_T433K), 
+                                 "high", 
+                                 "low"))
+
+labid2patientn <- quant_annot_intr_init %>% 
+  dplyr::select(patient, sample_id) %>% 
+  dplyr::distinct()
+
+patients_proteomics <- left_join(labid2patientn, 
+                                 patients_proteomics)
+```
+
+```{r}
+library(survival)
+library(survminer)
+```
+
+```{r}
+fit1 <- survfit(Surv(`Time-to-reccurence (days)`) ~ MINDY1_T433K_abundance, 
+                data = quant_annot_intr_init)
+print(fit1)
+# Change color, linetype by strata, risk.table color by strata
+surv_p1 <- ggsurvplot(fit1,
+          pval = TRUE, conf.int = TRUE,
+          risk.table = FALSE, # Add risk table
+          risk.table.col = "strata", # Change risk table color by groups
+          linetype = "strata", # Change line type by groups
+          surv.median.line = "hv", # Specify median survival
+          ggtheme = theme_bw(), # Change ggplot2 theme
+          palette = "Dark2"
+          ) +
+  labs(x = "Time to Recurrence (Days)", 
+       y = "Time to Recurrence Probability")
+
+
+```
+
+```{r}
+surv_p1
+```
+
+# Cox proportional hazards model on protein expression vs Time to Recurrence
+
+## Checking Assumptions
+
+```{r}
+View(quant_annot_intr_init)
+names(quant_annot_intr_init)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=18, fig.width=21}
+# fit <- coxph(Surv(Time.to.reccurence..days., status) ~ sex + ASAH1.ng.ml + SYNM.ng.ml + GPNMB.ng.ml + MMP.9.ng.ml, data = ttr_surv_data)
+# print(summary(fit))
+
+library(finalfit)
+
+quant_annot_intr_init2 <- quant_annot_intr_init %>%
+  mutate(ttr_days = `Time-to-reccurence (days)`)
+
+dependent_var <- "Surv(`Time-to-reccurence (days)`, status)"
+explanatory_vars <- c("MINDY1_T433K", "Sex", "ttr_days")
+
+dependent_var
+explanatory_vars
+
+quant_annot_intr_init2 %>% 
+    coxphmulti(dependent_var, explanatory_vars) %>% 
+    cox.zph() %>% 
+    {zph_result <<- .} 
+
+```
+
+## Model results
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4.5, fig.width=8}
+library(globaltest)
+
+quant_annot_intr_init2 %>%
+  ff_plot(dependent_var, 
+          explanatory_vars, 
+          dependent_label = "Time to Recurrence")
+```
+
+```{r}
+explanatory_vars_univar <- c("MINDY1_T433K")
+```
+
+```{r}
+quant_annot_intr_init2 %>%
+  ff_plot(dependent_var, 
+          explanatory_vars_univar, 
+          dependent_label = "Time to Recurrence")
+```
+
+```{r}
+ggsave(here::here("figures/cox_phm_mindy_T433K_summary_rev_version_univariate.pdf"), 
+       quant_annot_intr_init2 %>%
+  ff_plot(dependent_var, 
+          explanatory_vars_univar, 
+          dependent_label = "Time to Recurrence"), 
+       width = 20, 
+       height = 10,
+       units = "cm")
+```
+
+```{r}
+ggsave(here::here("figures/cox_phm_mindy_T433K_summary_rev_version_w_sex_n_age.pdf"), 
+       quant_annot_intr_init2 %>%
+  ff_plot(dependent_var, 
+          explanatory_vars, 
+          dependent_label = "Time to Recurrence"), 
+       width = 20, 
+       height = 10,
+       units = "cm")
+```

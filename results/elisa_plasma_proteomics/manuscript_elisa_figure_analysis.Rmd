@@ -517,9 +517,11 @@ splsda <- function(train_df, test_df){
 
 <!-- # Data File Paths -->
 ```{r message=FALSE, warning=FALSE, include=FALSE}
-patient_clinical_data <- "../../data/elisa_plasma_proteomics/Patients_information_FINAL.csv"
-patient_longitudinal_mapping_file <- "../../data/elisa_plasma_proteomics/Patients_for_ELISA_longitudinal_mapping.csv"
-elisa_data_file <- "../../data/elisa_plasma_proteomics/ELISA_data.csv"
+patient_clinical_data <- here::here("data/elisa_plasma_proteomics/Patients_information_FINAL.csv")
+
+patient_longitudinal_mapping_file <- here::here("data/elisa_plasma_proteomics/Patients_for_ELISA_longitudinal_mapping.csv")
+
+elisa_data_file <- here::here("data/elisa_plasma_proteomics/ELISA_data.csv")
 ```
 
 <!-- # Load Data -->
@@ -595,10 +597,10 @@ stats_frame <- parallel::mclapply(seq_len(nrow(comparisons)), function(iterator)
     }
     message(sprintf("INFO: Computing %s for %s for comparison %s", method, unique(.d$gene), paste(comp, collapse=", ") ))
     do_perm_test(data = .d_wide, gene = .d$gene, response_var = "log2_conc", group1 = comp[1], group2 = comp[2], method = method, grouping_column = "Manifestation")
-  }, mc.cores = 4) %>%
+  }) %>%
     rbindlist() %>%
     unique()
-}, mc.cores=3) %>% rbindlist()
+}) %>% rbindlist()
 
 stat_test <- stats_frame %>%
   dplyr::group_by(group1, group2) %>%
@@ -939,10 +941,10 @@ stats_frame <- parallel::mclapply(seq_len(nrow(comparisons)), function(iterator)
     }
     message(sprintf("INFO: Computing %s for %s for comparison %s", method, unique(.d$gene), paste(comp, collapse=", ") ))
     do_perm_test(data = .d_wide, gene = .d$gene, response_var = "log2_conc", group1 = comp[1], group2 = comp[2], method = method, grouping_column = "collection_type2")
-  }, mc.cores = 4) %>%
+  }) %>%
     rbindlist() %>%
     unique()
-}, mc.cores=3) %>% rbindlist()
+}) %>% rbindlist()
 
 stat_test_coord <- pdata2 %>%
   group_by(gene) %>%
@@ -2771,7 +2773,8 @@ g <- ggplot(pred_obj_3$roc_data, aes(m=GBM, d=factor(obs, levels = c("ctrl", "GB
   geom_roc(n.cuts=0) + 
   scale_color_manual(values = RColorBrewer::brewer.pal(length(unique(pred_obj_3$master_lift$liftModelVar)), "Dark2"), labels=c("Logit", "Elastic Logit", "KNN", "RF")) +
   coord_equal() +
-  style_roc(x="1 - Specificity", y="Sensitivity")
+  style_roc(x = "1 - Specificity", 
+            y = "Sensitivity")
 
 auc_tbl_3 <- as.data.table(calc_auc(g))
 
@@ -2828,7 +2831,7 @@ data_long %>%
   # dplyr::group_by(gene, Number.x) %>%
   # dplyr::add_count() %>%
   # dplyr::filter(n==2) %>%
-  dplyr::mutate(class = plyr::mapvalues(patient_state, from=c(1), to=c("iGBMoverrGBM"))) -> pdata
+  dplyr::mutate(class = plyr::mapvalues(patient_state, from=c(1), to = c("iGBMoverrGBM"))) -> pdata
 
 data_long %>% 
   dplyr::mutate(conc = conc+1) %>% # Add one to avoid cases of 0 division
@@ -3426,7 +3429,7 @@ g
 
 <!-- # Latency Data -->
 ```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=8, fig.width=9, include=FALSE}
-latency_data_file <- "../../data/elisa_plasma_proteomics/ELISA_LATENCY_KM.csv"
+latency_data_file <- here::here("data/elisa_plasma_proteomics/ELISA_LATENCY_KM.csv")
 latency_data <- fread(latency_data_file)
 # Clean names
 latency_data <- rstatix::make_clean_names(latency_data)
@@ -3603,6 +3606,9 @@ ttr_surv_data$`Time-to-reccurence (days)`[ ttr_surv_data$`Time-to-reccurence (da
 ttr_surv_data$`Time-to-reccurence (days)` <- as.numeric(ttr_surv_data$`Time-to-reccurence (days)`)
 ttr_surv_data <- rstatix::make_clean_names(ttr_surv_data)
 
+library(readr)
+write_tsv(ttr_surv_data,
+          here::here("data/elisa_plasma_proteomics/ttr_survival_data.tsv"))
 
 fit <- survfit(Surv(Time.to.reccurence..days., status) ~ ASAH1, data = ttr_surv_data)
 print(fit)
@@ -3803,6 +3809,7 @@ ttr_surv_p5_with_ci <- ttr_surv_p5_with_ci$plot +
         legend.position = "bottom")
 
 ## COXPH ----
+ttr_surv_data
 fit <- coxph(Surv(Time.to.reccurence..days., status) ~ sex + ASAH1.ng.ml + SYNM.ng.ml + GPNMB.ng.ml + MMP.9.ng.ml, data = ttr_surv_data)
 print(summary(fit))
 
@@ -3823,7 +3830,49 @@ ttr_surv_data %>%
   finalfit(dependent_var, explanatory_vars) %>%
   gt()
   
+ttr_surv_data %>%
+  hr_plot(dependent_var, explanatory_vars, dependent_label="Time to Recurrence")
 
+ttr_surv_data %>%
+  surv_plot(dependent_var, explanatory_vars, xlab="Time (days)", pval=TRUE, legend="none")
+
+
+ttr_surv_data %>%
+  ff_plot(dependent_var, explanatory_vars, dependent_label="Time to Recurrence")
+```
+
+# Cox-PHM
+
+This section was created as part of the revision process, to check for the effect of age and sex in the model.
+
+```{r}
+?Surv
+?coxphmulti
+```
+
+```{r}
+## COXPH ----
+#ttr_surv_data
+fit2 <- coxph(Surv(Time.to.reccurence..days., status) ~ sex + Age.at.surgery..years. + ASAH1.ng.ml + SYNM.ng.ml + GPNMB.ng.ml + MMP.9.ng.ml, data = ttr_surv_data)
+print(summary(fit2))
+
+library(finalfit)
+
+dependent_var <- "Surv(Time.to.reccurence..days., status)"
+explanatory_vars <- c("ASAH1.ng.ml", "SYNM.ng.ml", "GPNMB.ng.ml", "MMP.9.ng.ml")
+
+ttr_surv_data %>% 
+    coxphmulti(dependent_var, explanatory_vars) %>% 
+    cox.zph() %>% 
+    {zph_result <<- .} %>% 
+    plot(var=3)
+
+zph_result
+
+ttr_surv_data %>%
+  finalfit(dependent_var, explanatory_vars) %>%
+  gt()
+  
 ttr_surv_data %>%
   hr_plot(dependent_var, explanatory_vars, dependent_label="Time to Recurrence")
 
