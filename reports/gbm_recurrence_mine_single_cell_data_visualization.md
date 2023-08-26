@@ -153,6 +153,65 @@ ggsave(here::here("figures/umap_grid_asah1_expression_scRNAseq.png"),
        units = "cm")
 ```
 
+# Violin plot
+
+``` r
+annotated_with_asah14violin <- annotated_with_asah1 %>%
+  filter(asah1_expression > 2.5) 
+```
+
+``` r
+violin_asahl_expr_celltype <- ggplot(annotated_with_asah14violin, 
+       aes(x = cluster, 
+           y = asah1_expression,
+           fill = cluster)) +
+  geom_violin() +
+  #scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "Cell type", 
+       y = "ASAH1 expression [log2(CPM)]") +
+  theme(legend.position = "none",
+        # tilt the x-axis labels 45 degrees
+        axis.text.x = element_text(angle = -45, 
+                                   hjust = 0,
+                                   vjust = 1.6)
+        ) 
+```
+
+``` r
+violin_asahl_expr_celltype
+```
+
+![](gbm_recurrence_mine_single_cell_data_visualization_files/figure-gfm/unnamed-chunk-12-1.png)
+
+``` r
+umap_grid_w_violin <- plot_grid(umap_cell_type, 
+                                umap_asah1_expr, 
+                                violin_asahl_expr_celltype,
+                                ncol = 2)
+```
+
+``` r
+umap_grid_w_violin
+```
+
+![](gbm_recurrence_mine_single_cell_data_visualization_files/figure-gfm/unnamed-chunk-14-1.png)
+
+``` r
+ggsave(here::here("figures/umap_grid_asah1_expression_violin_scRNAseq.pdf"), 
+       umap_grid_w_violin, 
+       width = 34, 
+       height = 34,
+       units = "cm")
+```
+
+``` r
+ggsave(here::here("figures/umap_grid_asah1_expression_violin_scRNAseq.png"), 
+       umap_grid_w_violin, 
+       width = 34, 
+       height = 34,
+       units = "cm")
+```
+
 ``` r
 dev.off()
 ```
