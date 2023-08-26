@@ -96,10 +96,6 @@ ttr_surv_data %>%
 #zph_result
 
 ttr_surv_data %>%
-  finalfit(dependent_var, explanatory_vars) %>%
-  gt()
-  
-ttr_surv_data %>%
   hr_plot(dependent_var, explanatory_vars, 
           dependent_label="Time to Recurrence")
 
@@ -143,10 +139,6 @@ ttr_surv_data %>%
 
 #zph_result2
 
-ttr_surv_data %>%
-  finalfit(dependent_var, explanatory_vars2) %>%
-  gt()
-  
 ttr_surv_data %>%
   hr_plot(dependent_var, explanatory_vars2, dependent_label="Time to Recurrence")
 
