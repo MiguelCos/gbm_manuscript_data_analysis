@@ -1,0 +1,180 @@
+---
+title: "GBM Recurrence - Cox Proportional Hazards Model"
+author: "Justin Sing - Miguel Cosenza-Contreras"
+format:
+  gfm:
+    toc: true 
+    toc-depth: 4 # default is 3
+    number-sections: true
+    execute:
+      output: true
+always_allow_html: true
+editor: source
+---
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE, 
+                      message = FALSE, 
+                      warning = FALSE)
+
+## Required packages ----
+library(tidyverse)
+library(ggpubr)
+library(ggrepel)
+library(cowplot)
+library(here)
+library(survival)
+library(gt)
+
+
+theme_set(theme(axis.text.x = element_text(hjust = 0.5, 
+                                           vjust = 0, 
+                                           size = 12, 
+                                           angle = 360),
+                axis.text.y = element_text(hjust = 0.5, 
+                                           vjust = 0, 
+                                           size = 12),
+                panel.background = element_blank(),
+                panel.grid.major = element_line(color = "grey"),
+                panel.border = element_rect(colour = "black", 
+                                            fill = NA, 
+                                            linewidth = 1.5),
+                axis.title=element_text(size = 12),
+                legend.title = element_text(size = 12),
+                legend.text = element_text(size = 11),
+                legend.key.height = unit(4, 
+                                         'mm'),
+                legend.key.width = unit(4, 
+                                        'mm'),
+                legend.key.size = unit(10,
+                                        'mm'),
+                legend.position = "bottom"))
+```
+
+# Initial data loading and wrangling
+
+Load the annotation with ASAH1 expression data
+
+```{r}
+ttr_surv_data <- read_tsv(here::here("data/elisa_plasma_proteomics/ttr_survival_data.tsv"))
+```
+
+# Survival analysis
+
+## Cox-PHM - including only sex (original analysis)
+
+Fitting the model:
+
+```{r}
+## COXPH ----
+#ttr_surv_data
+fit <- coxph(Surv(Time.to.reccurence..days., status) ~ sex +  ASAH1.ng.ml + SYNM.ng.ml + GPNMB.ng.ml + MMP.9.ng.ml, data = ttr_surv_data)
+```
+
+Model summary:
+
+```{r}
+print(summary(fit))
+```
+
+Observation: Sex does not seem to represent a significant variable in the model.
+
+### Genarate tabular and graphical summaries
+
+```{r}
+library(finalfit)
+
+dependent_var <- "Surv(Time.to.reccurence..days., status)"
+explanatory_vars <- c("ASAH1.ng.ml", "SYNM.ng.ml", "GPNMB.ng.ml", "MMP.9.ng.ml")
+
+ttr_surv_data %>% 
+    coxphmulti(dependent_var, explanatory_vars) %>% 
+    cox.zph() %>% 
+    {zph_result <<- .} %>% 
+    plot(var=3)
+
+#zph_result
+
+ttr_surv_data %>%
+  finalfit(dependent_var, explanatory_vars) %>%
+  gt()
+  
+ttr_surv_data %>%
+  hr_plot(dependent_var, explanatory_vars, 
+          dependent_label="Time to Recurrence")
+
+ttr_surv_data %>%
+  ff_plot(dependent_var, explanatory_vars, 
+          dependent_label="Time to Recurrence")
+```
+
+## Cox-PHM - including only sex and age (revision version analysis)
+
+This section was created as part of the revision process, to check for the effect of age and sex in the model.
+
+```{r}
+## COXPH ----
+#ttr_surv_data
+fit2 <- coxph(Surv(Time.to.reccurence..days., status) ~ sex + Age.at.surgery..years. + ASAH1.ng.ml + SYNM.ng.ml + GPNMB.ng.ml + MMP.9.ng.ml, data = ttr_surv_data)
+```
+
+Model summary:
+
+```{r}
+print(summary(fit2))
+```
+
+```{r}
+?coxphmulti
+```
+
+Observation: p-value for age is 0.0878 in the model; while ASAH1 concentration is stil below 0.05.
+
+```{r}
+dependent_var <- "Surv(Time.to.reccurence..days., status)"
+explanatory_vars2 <- c("ASAH1.ng.ml", "SYNM.ng.ml", "GPNMB.ng.ml", "MMP.9.ng.ml",
+                      "sex", "Age.at.surgery..years.") # includes sex and age
+
+ttr_surv_data %>% 
+    coxphmulti(dependent_var, explanatory_vars2) %>% 
+    cox.zph() %>% 
+    {zph_result2 <<- .} %>% 
+    plot(var=3)
+
+#zph_result2
+
+ttr_surv_data %>%
+  finalfit(dependent_var, explanatory_vars2) %>%
+  gt()
+  
+ttr_surv_data %>%
+  hr_plot(dependent_var, explanatory_vars2, dependent_label="Time to Recurrence")
+
+ttr_surv_data %>%
+  ff_plot(dependent_var, explanatory_vars2, dependent_label="Time to Recurrence")
+```
+
+When including Age and Sex in the model, ASAH1 concentrations are still significantly associated with the time to recurrence. Age and sex are not significant in the model.
+
+```{r}
+ggsave(here::here("figures/cox_phm_summary_rev_version_w_age_n_sex.pdf"), 
+       ttr_surv_data %>%
+  ff_plot(dependent_var, explanatory_vars2, dependent_label="Time to Recurrence"), 
+       width = 20, 
+       height = 20,
+       units = "cm")
+```
+
+```{r}
+ggsave(here::here("figures/cox_phm_summary_rev_version_w_age_n_sex.png"), 
+       ttr_surv_data %>%
+  ff_plot(dependent_var, explanatory_vars2, dependent_label="Time to Recurrence"), 
+       width = 20, 
+       height = 20,
+       units = "cm")
+```
+
+```{r}
+dev.off()
+```
+
