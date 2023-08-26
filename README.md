@@ -22,7 +22,7 @@ The reproducible report, containing code for data preprocessing, statisical anal
 
 ### [Analysis of Plasma ELISA Proteomics](https://github.com/MiguelCos/gbm_manuscript_data_analysis/blob/main/results/elisa_plasma_proteomics/manuscript_elisa_figure_final.pdf)
 
-To regenerate analysis for Plasma ELISA Proteomics, knit the [manuscript_elisa_figure_final.Rmd](https://github.com/MiguelCos/gbm_manuscript_data_analysis/blob/main/results/elisa_plasma_proteomics/manuscript_elisa_figure_final.Rmd) r notebook.
+To regenerate analysis for Plasma ELISA Proteomics, knit the [manuscript_elisa_figure_final.Rmd](https://github.com/MiguelCos/gbm_manuscript_data_analysis/blob/main/results/elisa_plasma_proteomics/manuscript_elisa_figure_final.Rmd) r notebook. Re-analysis of the Cox proportional hazards model including Age and Sex and covariates can be found [here](https://github.com/MiguelCos/gbm_manuscript_data_analysis/blob/main/reports/gbm_recurrence_cox_phm_incl_age_sex_revision.md)
 
 ### Single-cell RNAseq data mining
 
