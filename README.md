@@ -1,4 +1,4 @@
-# Reproducible Data Analysis for the Manuscript 'Quantitative Proteomics Highlights Enrichment of key proteins in Recurrent Glioblastoma'
+# Reproducible Data Analysis for the Manuscript 'Proteometabolomics of initial and recurrent glioblastoma highlights an increased immune cell signature with altered lipid metabolism'
 
 [![DOI](https://zenodo.org/badge/427062720.svg)](https://zenodo.org/badge/latestdoi/427062720) 
 
