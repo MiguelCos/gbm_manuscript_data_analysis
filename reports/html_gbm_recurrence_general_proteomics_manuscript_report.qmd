@@ -2,12 +2,13 @@
 title: "GBM recurrence - Shotgun proteomics analysis"
 author: "Miguel Cosenza-Contreras"
 format:
-  gfm:
-    toc: true 
+  html: 
     toc-depth: 4 # default is 3
+    toc-title: Contents
+    toc-location: left # default is right, option is 'body'
     number-sections: true
-    execute:
-      output: true
+    number-depth: 3
+    embed-resources: true
 always_allow_html: true
 editor: source
 ---
@@ -694,7 +695,7 @@ ggplot(data = plsda_variates,
                            color = recurrence)) +  
   geom_text(aes(label = patient), 
             position = position_nudge(x = 2)) +
-  labs(title = "sPLS-DA plot of samples - pat6 excluded \nBased on the abundance values of proteins") +
+  #labs(title = "sPLS-DA plot of samples - pat6 excluded \nBased on the abundance values of proteins") +
   xlab(paste("sPLS-DA Comp-1", 
              round(plsda_restwo6$prop_expl_var$X[1]*100), 
              "% var explained")) + 
@@ -1007,39 +1008,29 @@ ggsave(plot = volcano,
 protlabels <- limma_tab_wo6 %>%
       filter(logFC > 0 | logFC < 0,
              adj.P.Val < 0.05,
-             Gene %in% c("ASAH1", "GPNMB", "SYNM", "CD14")) 
+             Gene %in% c("ASAH1"))
+                         #, "GPNMB", "SYNM", "CD14")) 
 
-size <- 0.4
+size <- 0.8
 
-volcano3 <- ggplot(data = limma_tab_wo6,
+volcano2 <- ggplot(data = limma_tab_wo6,
                       mapping = aes(x = logFC, y = -log10(adj.P.Val))) +
-      geom_point(data = limma_tab_wo6 %>% 
-                 filter(logFC > 0,
-                        adj.P.Val < 0.05),
-                 mapping = aes(x = logFC, 
-                               y = -log10(adj.P.Val)), 
+      geom_point(data = limma_tab_wo6 %>% filter(logFC > 0,
+                                           adj.P.Val < 0.05),
+                 mapping = aes(x = logFC, y = -log10(adj.P.Val)), 
                  color = "red",
                  size = size)+
-      geom_point(data = limma_tab_wo6 %>% 
-                   filter(logFC < -0,
-                          adj.P.Val < 0.05),
-                 mapping = aes(x = logFC, 
-                               y = -log10(adj.P.Val)), 
-                 color = "red",
+      geom_point(data = limma_tab_wo6 %>% filter(logFC < -0,
+                                           adj.P.Val < 0.05),
+                 mapping = aes(x = logFC, y = -log10(adj.P.Val)), color = "red",
                  size = size) +
-      geom_point(data = limma_tab_wo6 %>% 
-                   filter(logFC > 0,
-                          adj.P.Val > 0.05),
-                 mapping = aes(x = logFC, 
-                               y = -log10(adj.P.Val)), 
-                 color = "#2a9d8f",
+      geom_point(data = limma_tab_wo6 %>% filter(logFC > 0,
+                                           adj.P.Val > 0.05),
+                 mapping = aes(x = logFC, y = -log10(adj.P.Val)), color = "#2a9d8f",
                  size = size) +
-      geom_point(data = limma_tab_wo6 %>% 
-                   filter(logFC < -0,
-                          adj.P.Val > 0.05),
-                 mapping = aes(x = logFC, 
-                               y = -log10(adj.P.Val)), 
-                 color = "#2a9d8f",
+      geom_point(data = limma_tab_wo6 %>% filter(logFC < -0,
+                                           adj.P.Val > 0.05),
+                 mapping = aes(x = logFC, y = -log10(adj.P.Val)), color = "#2a9d8f",
                  size = size) +
       ggrepel::geom_text_repel(data = protlabels,
                                aes(label = Gene), size = 3.5) +
@@ -1049,64 +1040,16 @@ volcano3 <- ggplot(data = limma_tab_wo6,
 
 ```
 
-
-```{r fig.width=8, fig.height=6, echo=FALSE}
-protlabels <- limma_tab_wo6 %>%
-      filter(logFC > 0 | logFC < 0,
-             adj.P.Val < 0.05,
-             Gene %in% c("ASAH1", "GPNMB", "SYNM", "CD14")) 
-
-size <- 0.4
-
-volcano3 <- ggplot(data = limma_tab_wo6,
-                      mapping = aes(x = logFC, y = -log10(adj.P.Val))) +
-      geom_point(data = limma_tab_wo6 %>% filter(logFC > 0,
-                                           adj.P.Val < 0.05),
-                 mapping = aes(x = logFC, y = -log10(adj.P.Val)), 
-                 color = "black",
-                 size = size)+
-      geom_point(data = limma_tab_wo6 %>% filter(logFC < -0,
-                                           adj.P.Val < 0.05),
-                 mapping = aes(x = logFC, y = -log10(adj.P.Val)), 
-                 color = "black",
-                 size = size) +
-      geom_point(data = limma_tab_wo6 %>% filter(logFC > 0,
-                                           adj.P.Val > 0.05),
-                 mapping = aes(x = logFC, y = -log10(adj.P.Val)), 
-                 color = "darkgrey",
-                 size = size) +
-      geom_point(data = limma_tab_wo6 %>% filter(logFC < -0,
-                                           adj.P.Val > 0.05),
-                 mapping = aes(x = logFC, y = -log10(adj.P.Val)), 
-                 color = "darkgrey",
-                 size = size) +
-       # add red dots for the genes of interest
-       geom_point(data = limma_tab_wo6 %>% filter(Gene %in% c(
-              "ASAH1", 
-              "GPNMB", 
-              "SYNM", 
-              "CD14")),
-                   mapping = aes(x = logFC, y = -log10(adj.P.Val)), 
-                   color = "red",
-                   size = size)+
-      ggrepel::geom_text_repel(data = protlabels,
-                               aes(label = Gene), size = 3.5) +
-      geom_hline(yintercept = -log10(0.05),
-                 color = "red", linetype = "dashed") +
-      xlab("logFC - rGBM / iGBM")
-
-```
-
 ```{r echo=FALSE}
-ggsave(plot = volcano3, 
-       filename = here::here("figures/volcano3_proteomics_gbm.tiff"), 
+ggsave(plot = volcano2, 
+       filename = here::here("figures/volcano2_proteomics_gbm.tiff"), 
        device = "tiff",
        units = "mm",
        width = 63,
        height = 50)
 
-ggsave(plot = volcano3, 
-       filename = here::here("figures/volcano3_proteomics_gbm.eps"), 
+ggsave(plot = volcano2, 
+       filename = here::here("figures/volcano2_proteomics_gbm.eps"), 
        device = "eps",
        units = "mm",
        width = 63,
@@ -1159,6 +1102,10 @@ slim_data3 <- slim_data2 %>%
                           Protein == "Q14956" ~ "GPNMB",
                           Protein == "O15061" ~ "SYNM",
                           Protein == "P05164" ~ "MPO"))
+
+slim_data4 <- slim_data3 %>% 
+  filter(Gene %in% c("ASAH1"))
+
 ```
 
 ```{r fig.width=7.5, fig.height=5.9}
@@ -1709,79 +1656,7 @@ group_comparison_react <- compareCluster(ENTREZID~characteristic,
                                               readable = TRUE)
 ```
 
-```{r}
-data_dotplot_react <- group_comparison_react@compareClusterResult %>%
-  separate(col = "GeneRatio",
-           into =  c("left_ratio", "right_ratio"),
-           sep = "\\/",remove = FALSE) %>% 
-  mutate(left_ratio = as.numeric(left_ratio),
-         right_ratio = as.numeric(right_ratio)) %>%
-  mutate(Gene_Ratio = left_ratio/right_ratio) 
-```
-
-```{r}
-required_order <- c("Neutrophil degranulation",
-                    "Extracellular matrix organization",
-                    "Interleukin-4 and Interleukin-13 signaling",
-                    "Immunoregulatory interactions between a Lymphoid and a non-Lymphoid cell",
-                    "Integrin cell surface interactions",
-                    "Signaling by NOTCH",
-                    "RUNX1 regulates transcription of genes involved in differentiation of HSCs")
-
-data_dotplot_min <- data_dotplot_react %>% 
-  filter(Description %in% required_order) %>% 
-  mutate(Cluster = factor(Cluster,
-                          levels = c("up-regulated", "down-regulated")),
-         Description = factor(Description,
-                 levels = required_order)) %>%
-  arrange(factor(Description,
-                 levels = required_order)) %>%
-  mutate(index = row_number())
-```
-
-
 ### Dotplot Reactome
-
-```{r}
-reactome_dotplot <- ggplot(data = data_dotplot_min,
-             mapping = aes(x = Cluster, 
-                           y = reorder(Description,
-                                       -index), 
-                           size = Gene_Ratio)) + 
-  geom_point(aes(color = p.adjust)) + 
-  scale_color_continuous(low = "red", 
-                         high = "blue",
-            guide=guide_colorbar(reverse = TRUE),
-            breaks = c(0.01, 
-                       0.04)) +
-  scale_size_continuous(breaks = c(0.10, 
-                                   0.25)) +
-  theme(axis.text.x = element_text(hjust = 0.4, 
-                                   vjust = 0.1, 
-                                   size = 6, 
-                                   angle = 340),
-        axis.text.y = element_text(hjust = 0.95, 
-                                   vjust = 0.2, 
-                                   size = 6),
-        panel.background = element_blank(),
-        panel.border = element_rect(colour = "black", 
-                                    fill = NA, 
-                                    size = 0.5),
-        axis.title.x = element_blank(),
-        axis.title.y = element_blank(),
-        legend.text = element_text(size = 6),
-        legend.title = element_text(size = 6),
-        legend.key.height= unit(2, 'mm'),
-        legend.key.width= unit(2, 'mm'),
-        legend.position="bottom")
- 
-  
-```
-
-```{r}
-reactome_dotplot
-```
-
 
 ```{r warning=FALSE, message=FALSE}
 dotplot_react <- enrichplot::dotplot(group_comparison_react, 
@@ -1834,25 +1709,6 @@ ggsave(plot = dotplot_react,
        height = 90)
 ```
 
-```{r}
-ggsave(plot = reactome_dotplot, 
-       filename = here::here("figures/dotplot_reactome_proteomics_gbm2.tiff"), 
-       device = "tiff",
-       units = "mm",
-       width = 91,
-       height = 90)
-
-ggsave(plot = reactome_dotplot, 
-       filename = here::here("figures/dotplot_reactome_proteomics_gbm2.eps"), 
-       device = "eps",
-       units = "mm",
-       width = 91,
-       height = 90)
-```
-
-
-
-
 ### Cnet plot Reactome
 
 ```{r}
@@ -1884,12 +1740,12 @@ ggsave(plot = cnet_plot,
        width = 110,
        height = 110)
 
-#ggsave(plot = cnet_plot, 
-#       filename = here::here("figures/cnet_plot_reactome_proteomics_gbm.svg"), 
-#       device = "svg",
-#       units = "mm",
-#       width = 110,
-#       height = 110)
+ggsave(plot = cnet_plot, 
+       filename = here::here("figures/cnet_plot_reactome_proteomics_gbm.svg"), 
+       device = "svg",
+       units = "mm",
+       width = 110,
+       height = 110)
 ```
 
 # Protein coverage plots

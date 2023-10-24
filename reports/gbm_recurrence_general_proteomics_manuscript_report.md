@@ -1431,7 +1431,7 @@ ggpaired(slim_data3,
          line.size = 0.1) 
 ```
 
-![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-42-1.png)
+![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-43-1.png)
 
 #### ASAH1 vs MPO abundance (Rec vs Init)
 
@@ -1507,7 +1507,7 @@ paired_boxplots_asah1mporatio <- ggpaired(mpo_ratio_prep,
 print(paired_boxplots_asah1mporatio) 
 ```
 
-![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-47-1.png)
+![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-48-1.png)
 
 ##### Scatter plot ASAH1 vs MPO
 
@@ -1526,7 +1526,7 @@ scatter_asah1mpo <- ggplot(data = mpo_ratio_prep2,
 print(scatter_asah1mpo)
 ```
 
-![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-50-1.png)
+![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-51-1.png)
 
 ## Differences in abundance of ASAH1 by type of resection
 
@@ -1578,7 +1578,7 @@ resection_diff_asah1plot <- ggplot(data = resection_diff_asah1,
 resection_diff_asah1plot
 ```
 
-![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-57-1.png)
+![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-58-1.png)
 
 ``` r
 twowayanova_resection <- aov(abundance_ASAH1 ~ Condition * type_resection, 
@@ -1696,7 +1696,7 @@ ggplot(data = ids_summary2,
                                   face = "bold"))
 ```
 
-![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-62-1.png)
+![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-63-1.png)
 
 # Exploratory analysis after sparcity reduction
 
@@ -1811,7 +1811,7 @@ qcplot_f <- ggplot(quant_annotated_f,
                          legend.position="bottom")
 ```
 
-![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-68-1.png)
+![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-69-1.png)
 
 # Over-representation analyses/tests (ORAs)
 
@@ -1869,7 +1869,77 @@ group_comparison_react <- compareCluster(ENTREZID~characteristic,
                                               readable = TRUE)
 ```
 
+``` r
+data_dotplot_react <- group_comparison_react@compareClusterResult %>%
+  separate(col = "GeneRatio",
+           into =  c("left_ratio", "right_ratio"),
+           sep = "\\/",remove = FALSE) %>% 
+  mutate(left_ratio = as.numeric(left_ratio),
+         right_ratio = as.numeric(right_ratio)) %>%
+  mutate(Gene_Ratio = left_ratio/right_ratio) 
+```
+
+``` r
+required_order <- c("Neutrophil degranulation",
+                    "Extracellular matrix organization",
+                    "Interleukin-4 and Interleukin-13 signaling",
+                    "Immunoregulatory interactions between a Lymphoid and a non-Lymphoid cell",
+                    "Integrin cell surface interactions",
+                    "Signaling by NOTCH",
+                    "RUNX1 regulates transcription of genes involved in differentiation of HSCs")
+
+data_dotplot_min <- data_dotplot_react %>% 
+  filter(Description %in% required_order) %>% 
+  mutate(Cluster = factor(Cluster,
+                          levels = c("up-regulated", "down-regulated")),
+         Description = factor(Description,
+                 levels = required_order)) %>%
+  arrange(factor(Description,
+                 levels = required_order)) %>%
+  mutate(index = row_number())
+```
+
 ### Dotplot Reactome
+
+``` r
+reactome_dotplot <- ggplot(data = data_dotplot_min,
+             mapping = aes(x = Cluster, 
+                           y = reorder(Description,
+                                       -index), 
+                           size = Gene_Ratio)) + 
+  geom_point(aes(color = p.adjust)) + 
+  scale_color_continuous(low = "red", 
+                         high = "blue",
+            guide=guide_colorbar(reverse = TRUE),
+            breaks = c(0.01, 
+                       0.04)) +
+  scale_size_continuous(breaks = c(0.10, 
+                                   0.25)) +
+  theme(axis.text.x = element_text(hjust = 0.4, 
+                                   vjust = 0.1, 
+                                   size = 6, 
+                                   angle = 340),
+        axis.text.y = element_text(hjust = 0.95, 
+                                   vjust = 0.2, 
+                                   size = 6),
+        panel.background = element_blank(),
+        panel.border = element_rect(colour = "black", 
+                                    fill = NA, 
+                                    size = 0.5),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        legend.text = element_text(size = 6),
+        legend.title = element_text(size = 6),
+        legend.key.height= unit(2, 'mm'),
+        legend.key.width= unit(2, 'mm'),
+        legend.position="bottom")
+```
+
+``` r
+reactome_dotplot
+```
+
+![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-76-1.png)
 
 ``` r
 dotplot_react <- enrichplot::dotplot(group_comparison_react, 
@@ -1906,7 +1976,7 @@ dotplot_react <- enrichplot::dotplot(group_comparison_react,
 print(dotplot_react)
 ```
 
-![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-73-1.png)
+![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-78-1.png)
 
 ``` r
 ggsave(plot = dotplot_react, 
@@ -1918,6 +1988,22 @@ ggsave(plot = dotplot_react,
 
 ggsave(plot = dotplot_react, 
        filename = here::here("figures/dotplot_reactome_proteomics_gbm.eps"), 
+       device = "eps",
+       units = "mm",
+       width = 91,
+       height = 90)
+```
+
+``` r
+ggsave(plot = reactome_dotplot, 
+       filename = here::here("figures/dotplot_reactome_proteomics_gbm2.tiff"), 
+       device = "tiff",
+       units = "mm",
+       width = 91,
+       height = 90)
+
+ggsave(plot = reactome_dotplot, 
+       filename = here::here("figures/dotplot_reactome_proteomics_gbm2.eps"), 
        device = "eps",
        units = "mm",
        width = 91,
@@ -1940,7 +2026,7 @@ cnet_plot <- enrichplot::cnetplot(group_comparison_react) +
 print(cnet_plot)
 ```
 
-![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-76-1.png)
+![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-82-1.png)
 
 ``` r
 ggsave(plot = cnet_plot, 
@@ -1957,12 +2043,12 @@ ggsave(plot = cnet_plot,
        width = 110,
        height = 110)
 
-ggsave(plot = cnet_plot, 
-       filename = here::here("figures/cnet_plot_reactome_proteomics_gbm.svg"), 
-       device = "svg",
-       units = "mm",
-       width = 110,
-       height = 110)
+#ggsave(plot = cnet_plot, 
+#       filename = here::here("figures/cnet_plot_reactome_proteomics_gbm.svg"), 
+#       device = "svg",
+#       units = "mm",
+#       width = 110,
+#       height = 110)
 ```
 
 # Protein coverage plots
@@ -2105,7 +2191,7 @@ pepcov_asah1 <- draw_peptides(wdomainsasah1, cov_feat_asah1)
 print(pepcov_asah1)
 ```
 
-![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-81-1.png)
+![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-87-1.png)
 
 ``` r
 ggsave(plot = pepcov_asah1, 
@@ -2155,7 +2241,7 @@ pepcov_SYNM <- draw_peptides(wchainSYNM, cov_feat_SYNM)
 print(pepcov_SYNM)
 ```
 
-![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-84-1.png)
+![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-90-1.png)
 
 ``` r
 ggsave(plot = pepcov_SYNM, 
@@ -2351,25 +2437,25 @@ surv_p4 <- ggsurvplot(fit4,
 surv_p1
 ```
 
-![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-94-1.png)
+![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-100-1.png)
 
 ``` r
 surv_p2
 ```
 
-![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-94-2.png)
+![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-100-2.png)
 
 ``` r
 surv_p3
 ```
 
-![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-94-3.png)
+![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-100-3.png)
 
 ``` r
 surv_p4
 ```
 
-![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-94-4.png)
+![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-100-4.png)
 
 ## What’s the association of ASAH1/SYNM/GPNNMB/MMP9 at Recurrent stage with time to recurrence?
 
@@ -2517,22 +2603,22 @@ surv_p42 <- ggsurvplot(fit42,
 surv_p12
 ```
 
-![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-97-1.png)
+![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-103-1.png)
 
 ``` r
 surv_p22
 ```
 
-![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-97-2.png)
+![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-103-2.png)
 
 ``` r
 surv_p32
 ```
 
-![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-97-3.png)
+![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-103-3.png)
 
 ``` r
 surv_p42
 ```
 
-![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-97-4.png)
+![](gbm_recurrence_general_proteomics_manuscript_report_files/figure-gfm/unnamed-chunk-103-4.png)

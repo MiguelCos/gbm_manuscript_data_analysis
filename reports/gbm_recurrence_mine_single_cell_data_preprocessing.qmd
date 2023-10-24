@@ -71,15 +71,23 @@ Load the matrix and annotation
 ```{r}
 annot_1 <- read_csv(here::here("data/revision_single_cell_data/annot_Human_R_GBM_Full.csv"))
 
+annot_2_nd <- read_csv(here::here("data/revision_single_cell_data/from_ncbi/GSM4972211_annot.Human.GBM.ND1_2_3_4_5_6_7.csv"))
+
 annot_2_ncbi <- read_csv(here::here("data/revision_single_cell_data/from_ncbi/GSM4972210_annot.Human.GBM.R1_2_3_4_4nc.csv.gz"))
 
 # matrix data
-
 matrix_ncbi <- read_csv(here::here("data/revision_single_cell_data/from_ncbi/GSM4972210_Human.GBM.R1_2_3_4_4nc.filtered.gene.bc.matrix.csv"))
+
+# matrix data init
+matrix_ncbi_nd <- read_csv(here::here("data/revision_single_cell_data/from_ncbi/GSM4972211_Human.GBM.ND1_2_3_4_5_6_7.filtered.gene.bc.matrix.csv"))
 ```
 
 ```{r}
-View(annot_1)
+library(scuttle)
+```
+
+```{r}
+#View(annot_1)
 #View(annot_2_ncbi)
 #View(matrix_ncbi)
 ```
@@ -91,11 +99,9 @@ View(annot_1)
 
 # Normalize (CPM)
 
-```{r}
-library(scuttle)
-```
-
 # log2 transform 
+
+## rGBM 
 
 ```{r}
 matrix_ncbi <- matrix_ncbi %>%
@@ -105,23 +111,85 @@ matrix_ncbi <- matrix_ncbi %>%
 ```
 
 ```{r}
-cpm_mat <- calculateCPM(matrix_ncbi)
-mat_cpm_log2 <- log2(cpm_mat + 1)
-rm(cpm_mat)
+if(!file.exists(here::here("rds/matrix_ncbi_scSeq_CPM_rgbm.rds"))) {
+
+  cpm_mat <- calculateCPM(matrix_ncbi)
+  mat_cpm_log2 <- log2(cpm_mat + 1)
+  rm(cpm_mat)
+  
+  saveRDS(mat_cpm_log2, 
+          here::here("rds/matrix_ncbi_scSeq_CPM_rgbm.rds"))
+} else {
+
+  mat_cpm_log2 <- readRDS(here::here("rds/matrix_ncbi_scSeq_CPM_rgbm.rds"))
+
+}
 ```
 
 ```{r}
-mat_cpm_log2[1:15, 1:15]
+mat_cpm_log2[10:15, 10:15]
+```
+
+## iGBM (ND)
+
+```{r}
+matrix_ncbi_nd <- matrix_ncbi_nd %>%
+  dplyr::rename('gene' = '...1') %>%
+  column_to_rownames("gene") %>% 
+  as.matrix()
+```
+
+```{r}
+if(!file.exists(here::here("rds/matrix_ncbi_scSeq_CPM_igbm.rds"))) {
+
+  cpm_mat_nd <- calculateCPM(matrix_ncbi_nd)
+  mat_cpm_log2_nd <- log2(cpm_mat_nd + 1)
+  rm(cpm_mat_nd)
+  
+  saveRDS(mat_cpm_log2_nd, 
+          here::here("rds/matrix_ncbi_scSeq_CPM_igbm.rds"))
+} else {
+
+  mat_cpm_log2 <- readRDS(here::here("rds/matrix_ncbi_scSeq_CPM_igbm.rds"))
+
+}
+```
+
+```{r}
+mat_cpm_log2_nd[10:15, 10:15]
 ```
 
 # Wrangle 
+
+## rGBM
 
 ```{r}
 mat_cpm_df <- mat_cpm_log2 %>% 
   as.data.frame() %>%
   rownames_to_column("gene") %>%
   relocate(gene, everything()) 
+
+mat_cpm_df_names <- mat_cpm_df %>%
+  dplyr::select(gene)
 ```
+
+## iGBM (ND)
+
+```{r}
+mat_cpm_df_nd <- mat_cpm_log2_nd %>% 
+  as.data.frame() %>%
+  rownames_to_column("gene") %>%
+  relocate(gene, everything())
+
+mat_cpm_df_names_nd <- mat_cpm_df_nd %>%
+  dplyr::select(gene)
+
+  #View(mat_cpm_df_nd)
+```
+
+# Filter for ASAH1
+
+## rGBM
 
 ```{r}
 # ASAH1 expression
@@ -144,10 +212,424 @@ long_log2_df_asah1_annot <- long_log2_df_asah1 %>%
 ```
 
 ```{r}
-#View(long_log2_df_asah1_annot)
+View(long_log2_df_asah1_annot)
 ```
 
 ```{r}
 saveRDS(long_log2_df_asah1_annot,
         here::here("rds/long_cpm_scrnaseq_asah1_annot.rds"))
 ```
+
+## iGBM (ND)
+
+```{r}
+# ASAH1 expression
+mat_log2_df_asah1_nd <- mat_cpm_df_nd %>%
+  filter(gene == "ASAH1")
+```
+
+```{r}
+long_log2_df_asah1_nd <- mat_log2_df_asah1_nd %>%
+  pivot_longer(cols = -gene, 
+               names_to = "cell", 
+               values_to = "asah1_expression") 
+```
+
+Merge with annotation
+
+```{r}
+long_log2_df_asah1_annot_nd <- long_log2_df_asah1_nd %>%
+  left_join(annot_2_nd, by = c("cell" = "cell"))
+```
+
+```{r}
+saveRDS(long_log2_df_asah1_annot_nd,
+        here::here("rds/long_cpm_scrnaseq_asah1_annot_nd.rds"))
+```
+
+# Filter for MPO
+
+## rGBM
+
+```{r}
+# MPO expression
+mat_log2_df_mpo <- mat_cpm_df %>%
+  filter(gene == "MPO")
+```
+
+```{r}
+long_log2_df_mpo <- mat_log2_df_mpo %>%
+  pivot_longer(cols = -gene, 
+               names_to = "cell", 
+               values_to = "mpo_expression") 
+```
+
+Merge with annotation
+
+```{r}
+long_log2_df_mpo_annot <- long_log2_df_mpo %>%
+  left_join(annot_1, by = c("cell" = "cell"))
+```
+
+```{r}
+#View(long_log2_df_mpo_annot)
+```
+
+```{r}
+saveRDS(long_log2_df_mpo_annot,
+        here::here("rds/long_cpm_scrnaseq_mpo_annot.rds"))
+```
+
+## iGBM (ND)
+
+```{r}
+# MPO expression
+
+mat_log2_df_mpo_nd <- mat_cpm_df_nd %>%
+  filter(gene == "MPO")
+```
+
+```{r}
+long_log2_df_mpo_nd <- mat_log2_df_mpo_nd %>%
+  pivot_longer(cols = -gene, 
+               names_to = "cell", 
+               values_to = "mpo_expression") 
+```
+
+Merge with annotation
+
+```{r}
+long_log2_df_mpo_annot_nd <- long_log2_df_mpo_nd %>%
+  left_join(annot_2_nd, by = c("cell" = "cell"))
+```
+
+```{r}
+#View(long_log2_df_mpo_annot_nd)
+```
+
+```{r}
+saveRDS(long_log2_df_mpo_annot_nd,
+        here::here("rds/long_cpm_scrnaseq_mpo_annot_nd.rds"))
+```
+
+# Filter for CD14
+
+## rGBM
+
+```{r}
+# CD14 expression
+mat_log2_df_cd14 <- mat_cpm_df %>%
+  filter(gene == "CD14")
+```
+
+```{r}
+long_log2_df_cd14 <- mat_log2_df_cd14 %>%
+  pivot_longer(cols = -gene, 
+               names_to = "cell", 
+               values_to = "cd14_expression") 
+```
+
+Merge with annotation
+
+```{r}
+long_log2_df_cd14_annot <- long_log2_df_cd14 %>%
+  left_join(annot_1, by = c("cell" = "cell"))
+```
+
+```{r}
+#View(long_log2_df_cd14_annot)
+```
+
+```{r}
+saveRDS(long_log2_df_cd14_annot,
+        here::here("rds/long_cpm_scrnaseq_cd14_annot.rds"))
+```
+
+## iGBM (ND)
+
+```{r}
+# CD14 expression
+mat_log2_df_cd14_nd <- mat_cpm_df_nd %>%
+  filter(gene == "CD14")
+```
+
+```{r}
+long_log2_df_cd14_nd <- mat_log2_df_cd14_nd %>%
+  pivot_longer(cols = -gene, 
+               names_to = "cell", 
+               values_to = "cd14_expression") 
+```
+
+Merge with annotation
+
+```{r}
+long_log2_df_cd14_annot_nd <- long_log2_df_cd14_nd %>%
+  left_join(annot_2_nd, by = c("cell" = "cell"))
+```
+
+```{r}
+#View(long_log2_df_cd14_annot_nd)
+```
+
+```{r}
+saveRDS(long_log2_df_cd14_annot_nd,
+        here::here("rds/long_cpm_scrnaseq_cd14_annot_nd.rds"))
+```
+
+# Filter for IBA1
+
+## rGBM
+
+```{r}
+# IBA1 expression
+mat_log2_df_iba1 <- mat_cpm_df %>%
+  filter(gene == "AIF1")
+```
+
+```{r}
+long_log2_df_iba1 <- mat_log2_df_iba1 %>%
+  pivot_longer(cols = -gene, 
+               names_to = "cell", 
+               values_to = "iba1_expression") 
+```
+
+Merge with annotation
+
+```{r}
+long_log2_df_iba1_annot <- long_log2_df_iba1 %>%
+  left_join(annot_1, by = c("cell" = "cell"))
+```
+
+```{r}
+saveRDS(long_log2_df_iba1_annot,
+        here::here("rds/long_cpm_scrnaseq_iba1_annot.rds"))
+```
+
+## iGBM (ND)
+
+```{r}
+# IBA1 expression
+mat_log2_df_iba1_nd <- mat_cpm_df_nd %>%
+  filter(gene == "AIF1")
+```
+
+```{r}
+long_log2_df_iba1_nd <- mat_log2_df_iba1_nd %>%
+  pivot_longer(cols = -gene, 
+               names_to = "cell", 
+               values_to = "iba1_expression") 
+```
+
+Merge with annotation
+
+```{r}
+long_log2_df_iba1_annot_nd <- long_log2_df_iba1_nd %>%
+  left_join(annot_2_nd, by = c("cell" = "cell"))
+```
+
+```{r}
+saveRDS(long_log2_df_iba1_annot_nd,
+        here::here("rds/long_cpm_scrnaseq_iba1_annot_nd.rds"))
+```
+
+# Filter for lipocalin-2 (LCN2) 
+
+## rGBM
+
+```{r}
+mat_cpm_df[1:5, 1:5]
+```
+
+```{r}
+# LCN2 expression
+mat_log2_df_lcn2 <- mat_cpm_df %>%
+  filter(gene == "LCN2")
+```
+
+```{r}
+long_log2_df_lcn2 <- mat_log2_df_lcn2 %>%
+  pivot_longer(cols = -gene, 
+               names_to = "cell", 
+               values_to = "lcn2_expression") 
+```
+
+Merge with annotation
+
+```{r}
+long_log2_df_lcn2_annot <- long_log2_df_lcn2 %>%
+  left_join(annot_1, by = c("cell" = "cell"))
+```
+
+```{r}
+#View(long_log2_df_lcn2_annot)
+head(long_log2_df_lcn2_annot)
+```
+
+```{r}
+saveRDS(long_log2_df_lcn2_annot,
+        here::here("rds/long_cpm_scrnaseq_lcn2_annot.rds"))
+```
+
+## iGBM (ND)
+
+```{r}
+# LCN2 expression
+mat_log2_df_lcn2_nd <- mat_cpm_df_nd %>%
+  filter(gene == "LCN2")
+```
+
+```{r}
+long_log2_df_lcn2_nd <- mat_log2_df_lcn2_nd %>%
+  pivot_longer(cols = -gene, 
+               names_to = "cell", 
+               values_to = "lcn2_expression") 
+```
+
+Merge with annotation
+
+```{r}
+long_log2_df_lcn2_annot_nd <- long_log2_df_lcn2_nd %>%
+  left_join(annot_2_nd, by = c("cell" = "cell"))
+```
+
+```{r}
+#View(long_log2_df_lcn2_annot_nd)
+head(long_log2_df_lcn2_annot_nd)
+```
+
+```{r}
+saveRDS(long_log2_df_lcn2_annot_nd,
+        here::here("rds/long_cpm_scrnaseq_lcn2_annot_nd.rds"))
+```
+
+# Filter for neutrophil elastase (ELANE)
+
+## rGBM
+
+```{r}
+# ELANE expression
+mat_log2_df_elane <- mat_cpm_df %>%
+  filter(gene == "ELANE")
+```
+
+```{r}
+long_log2_df_elane <- mat_log2_df_elane %>%
+  pivot_longer(cols = -gene, 
+               names_to = "cell", 
+               values_to = "elane_expression") 
+```
+
+Merge with annotation
+
+```{r}
+long_log2_df_elane_annot <- long_log2_df_elane %>%
+  left_join(annot_1, by = c("cell" = "cell"))
+```
+
+```{r}
+#View(long_log2_df_elane_annot)
+head(long_log2_df_elane_annot)
+```
+
+```{r}
+saveRDS(long_log2_df_elane_annot,
+        here::here("rds/long_cpm_scrnaseq_elane_annot.rds"))
+```
+
+## iGBM (ND)
+
+```{r}
+# ELANE expression
+mat_log2_df_elane_nd <- mat_cpm_df_nd %>%
+  filter(gene == "ELANE")
+```
+
+```{r}
+long_log2_df_elane_nd <- mat_log2_df_elane_nd %>%
+  pivot_longer(cols = -gene, 
+               names_to = "cell", 
+               values_to = "elane_expression") 
+```
+
+Merge with annotation
+
+```{r}
+long_log2_df_elane_annot_nd <- long_log2_df_elane_nd %>%
+  left_join(annot_2_nd, by = c("cell" = "cell"))
+```
+
+```{r}
+#View(long_log2_df_elane_annot_nd)
+head(long_log2_df_elane_annot_nd)
+```
+
+```{r}
+saveRDS(long_log2_df_elane_annot_nd,
+        here::here("rds/long_cpm_scrnaseq_elane_annot_nd.rds"))
+```
+
+# Filter for CD68 
+
+## rGBM
+  
+```{r}
+# CD68 expression
+mat_log2_df_cd68 <- mat_cpm_df %>%
+  filter(gene == "CD68")
+```
+
+```{r}
+long_log2_df_cd68 <- mat_log2_df_cd68 %>%
+  pivot_longer(cols = -gene, 
+               names_to = "cell", 
+               values_to = "cd68_expression") 
+```
+Merge with annotation
+
+```{r}
+long_log2_df_cd68_annot <- long_log2_df_cd68 %>%
+  left_join(annot_1, by = c("cell" = "cell"))
+```
+
+```{r}
+#View(long_log2_df_cd68_annot)
+head(long_log2_df_cd68_annot)
+```
+
+```{r}
+saveRDS(long_log2_df_cd68_annot,
+        here::here("rds/long_cpm_scrnaseq_cd68_annot.rds"))
+```
+
+## iGBM (ND)
+
+```{r}
+# CD68 expression
+mat_log2_df_cd68_nd <- mat_cpm_df_nd %>%
+  filter(gene == "CD68")
+```
+
+```{r}
+long_log2_df_cd68_nd <- mat_log2_df_cd68_nd %>%
+  pivot_longer(cols = -gene, 
+               names_to = "cell", 
+               values_to = "cd68_expression") 
+```
+
+Merge with annotation
+
+```{r}
+long_log2_df_cd68_annot_nd <- long_log2_df_cd68_nd %>%
+  left_join(annot_2_nd, by = c("cell" = "cell"))
+```
+
+```{r}
+#View(long_log2_df_cd68_annot_nd)
+head(long_log2_df_cd68_annot_nd)
+```
+
+```{r}
+saveRDS(long_log2_df_cd68_annot_nd,
+        here::here("rds/long_cpm_scrnaseq_cd68_annot_nd.rds"))
+```
+

@@ -13,7 +13,7 @@ editor: source
 ---
 
 ```{r}
-knitr::opts_chunk$set(echo = TRUE, 
+knitr::opts_chunk$set(echo = FALSE, 
                       message = FALSE, 
                       warning = FALSE)
 
@@ -22,7 +22,9 @@ library(tidyverse)
 library(ggpubr)
 library(ggrepel)
 library(cowplot)
-
+library(scales)    # Install ggnewscale package
+library(ggnewscale)    
+library(ggrastr)
 
 theme_set(theme(axis.text.x = element_text(hjust = 0.5, 
                                            vjust = 0, 
@@ -56,18 +58,35 @@ Load the annotation with ASAH1 expression data
 annotated_with_asah1 <- readRDS(here::here("rds/long_cpm_scrnaseq_asah1_annot.rds"))
 ```
 
-# Generate scatter plot
+# Generate scatter plot for ASAH1 expression
+
+## rGBM
+
+```{r}
+cell_type_centroid <- annotated_with_asah1 %>%
+  group_by(cluster) %>%
+  summarise(x = mean(x), 
+            y = mean(y)) %>%
+  ungroup()
+```
 
 ```{r}
 umap_asah1_expr <- ggplot(annotated_with_asah1, 
        aes(x = x, 
            y = y, 
            color = asah1_expression)) +
-  geom_point(alpha = 0.5) +
+  ggrastr::rasterize(geom_point(alpha = 0.5)) +
+  geom_text(data = cell_type_centroid, 
+            aes(x = x, 
+                y = y, 
+                label = cluster), 
+            size = 5,
+            color = "black") +
   scale_color_gradient(low = "yellow", high = "red") +
   labs(x = "UMAP_1", 
        y = "UMAP_2", 
-       color = "ASAH1 expression\n[log2(CPM)]") +
+       color = "ASAH1 expression\n[log2(CPM)]",
+       title = "Recurrent GBM") +
   theme(legend.position = "bottom")
 ```
 
@@ -84,7 +103,7 @@ umap_cell_type <- ggplot(annotated_with_asah1,
        aes(x = x, 
            y = y, 
            color = cluster)) +
-  geom_point(alpha = 0.5) +
+  ggrastr::rasterize(geom_point(alpha = 0.5)) +
   geom_text(data = cell_type_centroid, 
             aes(x = x, 
                 y = y, 
@@ -94,7 +113,8 @@ umap_cell_type <- ggplot(annotated_with_asah1,
   #scale_color_gradient(low = "yellow", high = "red") +
   labs(x = "UMAP_1", 
        y = "UMAP_2", 
-       color = "Cell type") +
+       color = "Cell type",
+       title = "Recurrent GBM") +
   theme(legend.position = "bottom") 
 ```
 
@@ -105,7 +125,7 @@ umap_grid <- plot_grid(umap_cell_type,
 ```
 
 ```{r fig.width=20, fig.height=10}
-umap_grid
+#umap_grid
 ```
 
 ```{r}
@@ -124,7 +144,7 @@ ggsave(here::here("figures/umap_grid_asah1_expression_scRNAseq.png"),
        units = "cm")
 ```
 
-# Violin plot 
+## Violin plot 
 
 ```{r}
 annotated_with_asah14violin <- annotated_with_asah1 %>%
@@ -149,7 +169,7 @@ violin_asahl_expr_celltype <- ggplot(annotated_with_asah14violin,
 ```
 
 ```{r}
-violin_asahl_expr_celltype
+#violin_asahl_expr_celltype
 ```
 
 ```{r}
@@ -183,3 +203,1767 @@ ggsave(here::here("figures/umap_grid_asah1_expression_violin_scRNAseq.png"),
 dev.off()
 ```
 
+## iGBM
+
+```{r}
+annotated_with_asah1_nd <- readRDS(here::here("rds/long_cpm_scrnaseq_asah1_annot_nd.rds"))
+```
+
+```{r}
+cell_type_centroid_nd <- annotated_with_asah1_nd %>%
+  group_by(cluster) %>%
+  summarise(x = mean(x), 
+            y = mean(y)) %>%
+  ungroup()
+```
+
+```{r}
+umap_cell_type_nd <- ggplot(annotated_with_asah1_nd, 
+       aes(x = x, 
+           y = y, 
+           color = cluster)) +
+  ggrastr::rasterize(geom_point(alpha = 0.5)) +
+  geom_text(data = cell_type_centroid_nd, 
+            aes(x = x, 
+                y = y, 
+                label = cluster), 
+            size = 5,
+            color = "black") +
+  #scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "UMAP_1", 
+       y = "UMAP_2", 
+       color = "Cell type",
+       title = "Newly diagnosed GBM") +
+  theme(legend.position = "bottom") 
+```
+
+# Generate scatter plot MPO expression
+
+```{r}
+annotated_with_mpo <- readRDS(here::here("rds/long_cpm_scrnaseq_mpo_annot.rds"))
+```
+
+```{r}
+umap_mpo_expr <- ggplot(annotated_with_mpo, 
+       aes(x = x, 
+           y = y, 
+           color = mpo_expression)) +
+  geom_point(alpha = 0.5) +
+  scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "UMAP_1", 
+       y = "UMAP_2", 
+       color = "MPO expression\n[log2(CPM)]") +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+umap_grid_mpo <- plot_grid(umap_cell_type, 
+                           umap_mpo_expr, 
+                           ncol = 2)
+```
+
+```{r fig.width=20, fig.height=10}
+#umap_grid_mpo
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_mpo_expression_scRNAseq.pdf"), 
+       umap_grid_mpo, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_mpo_expression_scRNAseq.png"), 
+       umap_grid_mpo, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+## Violin plot 
+
+```{r}
+annotated_with_mpo4violin <- annotated_with_mpo %>%
+  filter(mpo_expression > 0) 
+```
+
+```{r}
+violin_mpo_expr_celltype <- ggplot(annotated_with_mpo4violin, 
+       aes(x = cluster, 
+           y = mpo_expression,
+           fill = cluster)) +
+  geom_violin() +
+  #scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "Cell type", 
+       y = "MPO expression [log2(CPM)]") +
+  theme(legend.position = "none",
+        # tilt the x-axis labels 45 degrees
+        axis.text.x = element_text(angle = -45, 
+                                   hjust = 0,
+                                   vjust = 1.6)
+        ) 
+```
+
+```{r}
+#violin_mpo_expr_celltype
+```
+
+```{r}
+umap_grid_w_violin_mpo <- plot_grid(umap_cell_type, 
+                                    umap_mpo_expr, 
+                                    violin_mpo_expr_celltype,
+                                    ncol = 2)
+```
+
+```{r fig.width=20, fig.height=20}
+umap_grid_w_violin_mpo
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_mpo_expression_violin_scRNAseq.pdf"), 
+       umap_grid_w_violin_mpo, 
+       width = 34, 
+       height = 34,
+       units = "cm")
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_mpo_expression_violin_scRNAseq.png"), 
+       umap_grid_w_violin_mpo, 
+       width = 34, 
+       height = 34,
+       units = "cm")
+```
+
+# Generate scatter plot for CD14 expression
+
+## rGBM
+
+```{r}
+annotated_with_cd14 <- readRDS(here::here("rds/long_cpm_scrnaseq_cd14_annot.rds"))
+```
+
+```{r}
+umap_cd14_expr <- ggplot(annotated_with_cd14, 
+       aes(x = x, 
+           y = y, 
+           color = cd14_expression)) +
+  rasterize(geom_point(alpha = 0.5)) +
+  scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "UMAP_1", 
+       y = "UMAP_2", 
+       color = "CD14 expression\n[log2(CPM)]") +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+umap_grid_cd14 <- plot_grid(umap_cell_type, 
+                            umap_cd14_expr, 
+                            ncol = 2)
+```
+
+```{r fig.width=20, fig.height=10}
+umap_grid_cd14
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_cd14_expression_scRNAseq.pdf"), 
+       umap_grid_cd14, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_cd14_expression_scRNAseq.png"), 
+       umap_grid_cd14, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+### Violin plot 
+
+```{r}
+annotated_with_cd144violin <- annotated_with_cd14 %>%
+  filter(cd14_expression > 0) 
+```
+
+```{r}
+violin_cd14_expr_celltype <- ggplot(annotated_with_cd144violin, 
+       aes(x = cluster, 
+           y = cd14_expression,
+           fill = cluster)) +
+  geom_violin() +
+  #scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "Cell type", 
+       y = "CD14 expression [log2(CPM)]") +
+  theme(legend.position = "none",
+        # tilt the x-axis labels 45 degrees
+        axis.text.x = element_text(angle = -45, 
+                                   hjust = 0,
+                                   vjust = 1.6)
+        ) 
+```
+
+```{r}
+#violin_cd14_expr_celltype
+```
+
+```{r}
+umap_grid_w_violin_cd14 <- plot_grid(umap_cell_type, 
+                                     umap_cd14_expr, 
+                                     violin_cd14_expr_celltype,
+                                     ncol = 2)
+```
+
+```{r fig.width=20, fig.height=20}
+umap_grid_w_violin_cd14
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_cd14_expression_violin_scRNAseq.pdf"), 
+       umap_grid_w_violin_cd14, 
+       width = 34, 
+       height = 34,
+       units = "cm")
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_cd14_expression_violin_scRNAseq.png"), 
+       umap_grid_w_violin_cd14, 
+       width = 34, 
+       height = 34,
+       units = "cm")
+```
+
+## iGBM 
+
+```{r}
+annotated_with_cd14_nd <- readRDS(here::here("rds/long_cpm_scrnaseq_cd14_annot_nd.rds"))
+```
+
+```{r}
+umap_cd14_expr_nd <- ggplot(annotated_with_cd14_nd, 
+       aes(x = x, 
+           y = y, 
+           color = cd14_expression)) +
+  rasterize(geom_point(alpha = 0.5)) +
+  scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "UMAP_1", 
+       y = "UMAP_2", 
+       color = "CD14 expression\n[log2(CPM)]",
+       title = "Newly diagnosed GBM") +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+umap_grid_cd14_nd <- plot_grid(umap_cell_type_nd, 
+                               umap_cd14_expr_nd, 
+                               ncol = 2)
+```
+
+```{r fig.width=20, fig.height=10}
+umap_grid_cd14_nd
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_cd14_expression_scRNAseq_nd.pdf"), 
+       umap_grid_cd14_nd, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_cd14_expression_scRNAseq_nd.png"), 
+       umap_grid_cd14_nd, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+### Violin plot 
+
+```{r}
+annotated_with_cd144violin_nd <- annotated_with_cd14_nd %>%
+  filter(cd14_expression > 0) 
+```
+
+```{r}
+violin_cd14_expr_celltype_nd <- ggplot(annotated_with_cd144violin_nd, 
+       aes(x = cluster, 
+           y = cd14_expression,
+           fill = cluster)) +
+  geom_violin() +
+  #scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "Cell type", 
+       y = "CD14 expression [log2(CPM)]") +
+  theme(legend.position = "none",
+        # tilt the x-axis labels 45 degrees
+        axis.text.x = element_text(angle = -45, 
+                                   hjust = 0,
+                                   vjust = 1.6)
+        ) 
+```
+
+```{r}
+#violin_cd14_expr_celltype_nd
+```
+
+```{r}
+umap_grid_w_violin_cd14_nd <- plot_grid(umap_cell_type, 
+                                        umap_cd14_expr_nd, 
+                                        violin_cd14_expr_celltype_nd,
+                                        ncol = 2)
+```
+
+```{r fig.width=20, fig.height=20}
+umap_grid_w_violin_cd14_nd
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_cd14_expression_violin_scRNAseq_nd.pdf"), 
+       umap_grid_w_violin_cd14_nd, 
+       width = 34, 
+       height = 34,
+       units = "cm")
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_cd14_expression_violin_scRNAseq_nd.png"), 
+       umap_grid_w_violin_cd14_nd, 
+       width = 34, 
+       height = 34,
+       units = "cm")
+```
+
+
+
+# Generate scatter plot for IBA1 expression
+
+## rGBM
+
+```{r}
+annotated_with_iba1 <- readRDS(here::here("rds/long_cpm_scrnaseq_iba1_annot.rds"))
+```
+
+```{r}
+umap_iba1_expr <- ggplot(annotated_with_iba1, 
+       aes(x = x, 
+           y = y, 
+           color = iba1_expression)) +
+  geom_point(alpha = 0.5) +
+  scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "UMAP_1", 
+       y = "UMAP_2", 
+       color = "IBA1 expression\n[log2(CPM)]") +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+umap_grid_iba1 <- plot_grid(umap_cell_type, 
+                            umap_iba1_expr, 
+                            ncol = 2)
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_iba1_expression_scRNAseq.pdf"), 
+       umap_grid_iba1, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_iba1_expression_scRNAseq.png"), 
+       umap_grid_iba1, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+### Violin plot 
+
+```{r}
+annotated_with_iba14violin <- annotated_with_iba1 %>%
+  filter(iba1_expression > 0) 
+
+  head(annotated_with_iba14violin)
+```
+
+```{r}
+violin_iba1_expr_celltype <- ggplot(annotated_with_iba14violin, 
+       aes(x = cluster, 
+           y = iba1_expression,
+           fill = cluster)) +
+  geom_violin() +
+  #scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "Cell type", 
+       y = "IBA1 expression [log2(CPM)]") +
+  theme(legend.position = "none",
+        # tilt the x-axis labels 45 degrees
+        axis.text.x = element_text(angle = -45, 
+                                   hjust = 0,
+                                   vjust = 1.6)
+        ) 
+```
+
+```{r}
+umap_grid_w_violin_iba1 <- plot_grid(umap_cell_type, 
+                                     umap_iba1_expr, 
+                                     violin_iba1_expr_celltype,
+                                     ncol = 2)
+```
+
+```{r fig.width=20, fig.height=20}
+umap_grid_w_violin_iba1
+``` 
+
+```{r}
+ggsave(here::here("figures/umap_grid_iba1_expression_violin_scRNAseq.pdf"), 
+       umap_grid_w_violin_iba1, 
+       width = 34, 
+       height = 34,
+       units = "cm")
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_iba1_expression_violin_scRNAseq.png"), 
+       umap_grid_w_violin_iba1, 
+       width = 34, 
+       height = 34,
+       units = "cm")
+```
+
+## iGBM
+
+```{r}
+annotated_with_iba1_nd <- readRDS(here::here("rds/long_cpm_scrnaseq_iba1_annot_nd.rds"))
+```
+
+```{r}
+umap_iba1_expr_nd <- ggplot(annotated_with_iba1_nd, 
+       aes(x = x, 
+           y = y, 
+           color = iba1_expression)) +
+  rasterize(geom_point(alpha = 0.5)) +
+  scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "UMAP_1", 
+       y = "UMAP_2", 
+       color = "IBA1 expression\n[log2(CPM)]",
+       title = "Newly diagnosed GBM") +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+umap_grid_iba1_nd <- plot_grid(umap_cell_type_nd, 
+                               umap_iba1_expr_nd, 
+                               ncol = 2)
+```
+
+```{r fig.width=20, fig.height=10}
+umap_grid_iba1_nd
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_iba1_expression_scRNAseq_nd.pdf"), 
+       umap_grid_iba1_nd, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_iba1_expression_scRNAseq_nd.png"), 
+       umap_grid_iba1_nd, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+# Generate scatter plot for ELANE expression
+
+## rGBM
+
+```{r}
+annotated_with_elane <- readRDS(here::here("rds/long_cpm_scrnaseq_elane_annot.rds"))
+```
+
+```{r}
+umap_elane_expr <- ggplot(annotated_with_elane, 
+       aes(x = x, 
+           y = y, 
+           color = elane_expression)) +
+  geom_point(alpha = 0.5) +
+  scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "UMAP_1", 
+       y = "UMAP_2", 
+       color = "ELANE expression\n[log2(CPM)]") +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+umap_grid_elane <- plot_grid(umap_cell_type, 
+                             umap_elane_expr, 
+                             ncol = 2)
+```
+
+```{r fig.width=20, fig.height=10}
+#umap_grid_elane
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_elane_expression_scRNAseq.pdf"), 
+       umap_grid_elane, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_elane_expression_scRNAseq.png"), 
+       umap_grid_elane, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+## Violin plot 
+
+```{r}
+annotated_with_elane4violin <- annotated_with_elane %>%
+  filter(elane_expression > 0) 
+```
+
+```{r}
+violin_elane_expr_celltype <- ggplot(annotated_with_elane4violin, 
+       aes(x = cluster, 
+           y = elane_expression,
+           fill = cluster)) +
+  geom_violin() +
+  #scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "Cell type", 
+       y = "ELANE expression [log2(CPM)]") +
+  theme(legend.position = "none",
+        # tilt the x-axis labels 45 degrees
+        axis.text.x = element_text(angle = -45, 
+                                   hjust = 0,
+                                   vjust = 1.6)
+        ) 
+```
+
+```{r}
+violin_elane_expr_celltype
+```
+
+```{r}
+umap_grid_w_violin_elane <- plot_grid(umap_cell_type, 
+                                      umap_elane_expr, 
+                                      violin_elane_expr_celltype,
+                                      ncol = 2)
+```
+
+```{r fig.width=20, fig.height=20}
+umap_grid_w_violin_elane
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_elane_expression_violin_scRNAseq.pdf"), 
+       umap_grid_w_violin_elane, 
+       width = 34, 
+       height = 34,
+       units = "cm")
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_elane_expression_violin_scRNAseq.png"), 
+       umap_grid_w_violin_elane, 
+       width = 34, 
+       height = 34,
+       units = "cm")
+```
+
+## iGBM
+
+```{r}
+annotated_with_elane_nd <- readRDS(here::here("rds/long_cpm_scrnaseq_elane_annot_nd.rds"))
+```
+
+```{r}
+umap_elane_expr_nd <- ggplot(annotated_with_elane_nd, 
+       aes(x = x, 
+           y = y, 
+           color = elane_expression)) +
+  rasterize(geom_point(alpha = 0.5)) +
+  scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "UMAP_1", 
+       y = "UMAP_2", 
+       color = "ELANE expression\n[log2(CPM)]",
+       title = "Newly diagnosed GBM") +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+umap_grid_elane_nd <- plot_grid(umap_cell_type_nd, 
+                                umap_elane_expr_nd, 
+                                ncol = 2)
+```
+
+```{r fig.width=20, fig.height=10}
+umap_grid_elane_nd
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_elane_expression_scRNAseq_nd.pdf"), 
+       umap_grid_elane_nd, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_elane_expression_scRNAseq_nd.png"), 
+       umap_grid_elane_nd, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+# Genearate scatter plot for lipocalin-2 (LCN2) expression
+
+The single-cell dataset does not seem to contain LCN2 expression data.
+
+# Overlay ELANE with ASAH1, MPO and CD14 expression
+
+## rGBM
+
+```{r}
+annotated_with_elane_pos <- annotated_with_elane %>%
+       mutate(elane_positive = if_else(elane_expression > 0, 
+                                       "ELANE +", 
+                                       NA)) %>% 
+       dplyr::select(-c(gene))
+
+annotated_with_asah1_elane <- left_join(annotated_with_asah1,
+                                        annotated_with_elane_pos)
+
+annotated_with_asah1_elane_only_elane <- annotated_with_asah1_elane %>%
+       filter(!is.na(elane_positive))
+
+annotated_with_mpo_only <- annotated_with_mpo %>%
+       filter(mpo_expression > 0) 
+
+annotated_with_cd14_only <- annotated_with_cd14 %>%
+       filter(cd14_expression > 0) 
+
+```
+
+```{r}
+```
+
+```{r}
+umap_asah1_elane_expr <- ggplot() +
+  rasterize(geom_point(data = annotated_with_asah1_elane, 
+       mapping = aes(x = x, 
+                     y = y,
+                     color = asah1_expression),
+       alpha = 0.5
+           )) +
+  scale_color_gradient(low = "grey", high = "red") +
+  labs(x = "UMAP_1", 
+       y = "UMAP_2", 
+       color = "ASAH1 expression\n[log2(CPM)]") +
+  new_scale_color() + 
+  rasterize(geom_point(data = annotated_with_asah1_elane_only_elane, 
+       mapping = aes(x = x, 
+                     y = y,
+                     color = elane_expression),
+       alpha = 0.5
+           )) +
+  scale_color_gradient(low = "grey", high = "green") +
+  labs(x = "UMAP_1", 
+       y = "UMAP_2", 
+       color = "ELANE expression\n[log2(CPM)]") +
+  new_scale_color() + 
+  rasterize(geom_point(data = annotated_with_mpo_only, 
+       mapping = aes(x = x, 
+                     y = y,
+                     color = mpo_expression),
+       alpha = 0.5
+           )) +
+  scale_color_gradient(low = "grey", high = "blue") +
+  labs(x = "UMAP_1", 
+       y = "UMAP_2", 
+       color = "MPO expression\n[log2(CPM)]",
+       title = "Recurrent GBM") +
+  geom_text(data = cell_type_centroid, 
+            aes(x = x, 
+                y = y, 
+                label = cluster), 
+            size = 5,
+            color = "black") 
+  #theme(legend.position = "bottom")
+```
+
+```{r}
+umap_asah1_elane_expr
+```
+
+```{r}
+umap_grid_overlay_three <- plot_grid(umap_cell_type, 
+                                     umap_asah1_elane_expr, 
+                                     ncol = 2)
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_elane_asah1_mpo_expression_scRNAseq.pdf"), 
+       umap_grid_overlay_three, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_elane_asah1_mpo_expression_scRNAseq.png"), 
+       umap_grid_overlay_three, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+```{r fig.width=20, fig.height=10}
+umap_grid_overlay_three
+```
+
+### Violin of overlay
+
+```{r}
+annotated_with_elane4violin2 <- dplyr::rename(annotated_with_elane4violin,
+                                              gene_expression = elane_expression)
+```
+
+```{r}
+annotated_with_asah14violin2 <- dplyr::rename(annotated_with_asah14violin,
+                                              gene_expression = asah1_expression)
+```
+
+```{r}
+annotated_with_mpo4violin2 <- dplyr::rename(annotated_with_mpo4violin,
+                                            gene_expression = mpo_expression)
+```
+
+```{r}
+annotated_with_asah1_elane_mpo <- bind_rows(
+       annotated_with_elane4violin2,
+       annotated_with_asah14violin2,
+       annotated_with_mpo4violin2
+       ) %>%
+       group_by(cluster, gene) %>%
+       filter(n() > 1) %>%
+       ungroup()
+```
+
+```{r}
+#View(annotated_with_asah1_elane_mpo)
+```
+
+```{r}
+violin_three_expr_celltype <- ggplot(annotated_with_asah1_elane_mpo, 
+       aes(x = cluster, 
+           y = gene_expression,
+           fill = cluster)) +
+  geom_violin() +
+  #scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "Cell type", 
+       y = "Gene expression [log2(CPM)]") +
+  facet_grid(.~gene,
+              scale = "free_x") +
+  theme(legend.position = "none",
+        # tilt the x-axis labels 45 degrees
+        axis.text.x = element_text(angle = -45, 
+                                   hjust = 0,
+                                   vjust = 1.6)
+        ) 
+```
+
+```{r}
+violin_three_expr_celltype
+```
+
+```{r}
+ggsave(here::here("figures/violin_plots_elane_asah1_mpo_expression_scRNAseq.pdf"), 
+       plot = violin_three_expr_celltype, 
+       device = "pdf",
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+```{r}
+dev.off()
+```
+
+## iGBM
+
+```{r}
+annotated_with_elane_nd <- readRDS(here::here("rds/long_cpm_scrnaseq_elane_annot_nd.rds"))
+```
+
+```{r}
+annotated_with_mpo_nd <- readRDS(here::here("rds/long_cpm_scrnaseq_mpo_annot_nd.rds"))
+```
+
+
+```{r}
+annotated_with_elane_pos_nd <- annotated_with_elane_nd %>%
+       mutate(elane_positive = if_else(elane_expression > 0, 
+                                       "ELANE +", 
+                                       NA)) %>% 
+       dplyr::select(-c(gene))
+
+annotated_with_asah1_elane_nd <- left_join(annotated_with_asah1_nd,
+                                           annotated_with_elane_pos_nd)
+
+annotated_with_asah1_elane_only_elane_nd <- annotated_with_asah1_elane_nd %>%
+       filter(!is.na(elane_positive))
+
+annotated_with_mpo_only_nd <- annotated_with_mpo_nd %>% 
+       filter(mpo_expression > 0) 
+
+       annotated_with_mpo_only_nd
+```
+
+```{r}
+umap_asah1_elane_expr_nd <- ggplot() +
+  rasterize(geom_point(data = annotated_with_asah1_elane_nd, 
+       mapping = aes(x = x, 
+                     y = y,
+                     color = asah1_expression),
+       alpha = 0.5
+           )) +
+  scale_color_gradient(low = "grey", high = "red") +
+  labs(x = "UMAP_1", 
+       y = "UMAP_2", 
+       color = "ASAH1 expression\n[log2(CPM)]") +
+  new_scale_color() + 
+  rasterize(geom_point(data = annotated_with_asah1_elane_only_elane_nd, 
+       mapping = aes(x = x, 
+                     y = y,
+                     color = elane_expression),
+       alpha = 0.5
+           )) +
+  scale_color_gradient(low = "grey", high = "green") +
+  labs(x = "UMAP_1", 
+       y = "UMAP_2", 
+       color = "ELANE expression\n[log2(CPM)]") +
+       new_scale_color() + 
+  rasterize(geom_point(data = annotated_with_mpo_only_nd, 
+       mapping = aes(x = x, 
+                     y = y,
+                     color = mpo_expression),
+       alpha = 0.5
+           )) +
+  geom_text(data = cell_type_centroid_nd, 
+            aes(x = x, 
+                y = y, 
+                label = cluster), 
+            size = 5,
+            color = "black") +
+  scale_color_gradient(low = "grey", high = "blue") +
+  labs(x = "UMAP_1", 
+       y = "UMAP_2", 
+       color = "MPO expression\n[log2(CPM)]",
+       title = "Newly diagnosed GBM") 
+  #theme(legend.position = "bottom")
+```
+
+```{r}
+umap_asah1_elane_expr_nd
+```
+
+## UMAP overlay of rGBM and iGBM
+
+```{r}
+umap_grid_overlay_three_nd <- plot_grid(umap_asah1_elane_expr_nd,
+                                        umap_asah1_elane_expr, 
+                                        ncol = 2)
+```
+
+```{r}
+umap_grid_overlay_three_nd
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_elane_asah1_mpo_expression_scRNAseq_nd.pdf"), 
+       umap_grid_overlay_three_nd, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_elane_asah1_mpo_expression_scRNAseq_only_nd.pdf"), 
+       umap_asah1_elane_expr_nd, 
+       width = 34/2, 
+       height = 34/2,
+       units = "cm")
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_elane_asah1_mpo_expression_scRNAseq_only_rgbm.pdf"), 
+       umap_asah1_elane_expr, 
+       width = 25, 
+       height = 25,
+       units = "cm")
+```
+
+
+# Generate scatter plot for CD68 expression
+
+## rGBM
+
+```{r}
+annotated_with_cd68 <- readRDS(here::here("rds/long_cpm_scrnaseq_cd68_annot.rds"))
+```
+
+```{r}
+umap_cd68_expr <- ggplot(annotated_with_cd68, 
+       aes(x = x, 
+           y = y, 
+           color = cd68_expression)) +
+  geom_point(alpha = 0.5) +
+  scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "UMAP_1", 
+       y = "UMAP_2", 
+       color = "CD68 expression\n[log2(CPM)]") +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+umap_grid_cd68 <- plot_grid(umap_cell_type, 
+                            umap_cd68_expr, 
+                            ncol = 2)
+```
+
+```{r fig.width=20, fig.height=10}
+#umap_grid_cd68
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_cd68_expression_scRNAseq.pdf"), 
+       umap_grid_cd68, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_cd68_expression_scRNAseq.png"), 
+       umap_grid_cd68, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+## Violin plot 
+
+```{r}
+annotated_with_cd684violin <- annotated_with_cd68 %>%
+  filter(cd68_expression > 0) 
+```
+
+```{r}
+violin_cd68_expr_celltype <- ggplot(annotated_with_cd684violin, 
+       aes(x = cluster, 
+           y = cd68_expression,
+           fill = cluster)) +
+  geom_violin() +
+  #scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "Cell type", 
+       y = "CD68 expression [log2(CPM)]") +
+  theme(legend.position = "none",
+        # tilt the x-axis labels 45 degrees
+        axis.text.x = element_text(angle = -45, 
+                                   hjust = 0,
+                                   vjust = 1.6)
+        ) 
+```
+
+```{r}
+#violin_cd68_expr_celltype
+```
+
+```{r}
+umap_grid_w_violin_cd68 <- plot_grid(umap_cell_type, 
+                                     umap_cd68_expr, 
+                                     violin_cd68_expr_celltype,
+                                     ncol = 2)
+```
+
+```{r fig.width=20, fig.height=20}
+umap_grid_w_violin_cd68
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_cd68_expression_violin_scRNAseq.pdf"), 
+       umap_grid_w_violin_cd68, 
+       width = 34, 
+       height = 34,
+       units = "cm")
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_cd68_expression_violin_scRNAseq.png"), 
+       umap_grid_w_violin_cd68, 
+       width = 34, 
+       height = 34,
+       units = "cm")
+```
+
+## iGBM 
+
+```{r}
+annotated_with_cd68_nd <- readRDS(here::here("rds/long_cpm_scrnaseq_cd68_annot_nd.rds"))
+```
+
+```{r}
+umap_cd68_expr_nd <- ggplot(annotated_with_cd68_nd, 
+       aes(x = x, 
+           y = y, 
+           color = cd68_expression)) +
+  geom_point(alpha = 0.5) +
+  scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "UMAP_1", 
+       y = "UMAP_2", 
+       color = "CD68 expression\n[log2(CPM)]",
+       title = "Newly diagnosed GBM") +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+umap_grid_cd68_nd <- plot_grid(umap_cell_type_nd, 
+                               umap_cd68_expr_nd, 
+                               ncol = 2)
+```
+
+```{r fig.width=20, fig.height=10}
+umap_grid_cd68_nd
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_cd68_expression_scRNAseq_nd.pdf"), 
+       umap_grid_cd68_nd, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_cd68_expression_scRNAseq_nd.png"), 
+       umap_grid_cd68_nd, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+### Violin plot 
+
+```{r}
+annotated_with_cd684violin_nd <- annotated_with_cd68_nd %>%
+  filter(cd68_expression > 0) 
+```
+
+```{r}
+violin_cd68_expr_celltype_nd <- ggplot(annotated_with_cd684violin_nd, 
+       aes(x = cluster, 
+           y = cd68_expression,
+           fill = cluster)) +
+  geom_violin() +
+  #scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "Cell type", 
+       y = "CD68 expression [log2(CPM)]") +
+  theme(legend.position = "none",
+        # tilt the x-axis labels 45 degrees
+        axis.text.x = element_text(angle = -45, 
+                                   hjust = 0,
+                                   vjust = 1.6)
+        ) 
+```
+
+```{r}
+#violin_cd68_expr_celltype_nd
+```
+
+```{r}
+umap_grid_w_violin_cd68_nd <- plot_grid(umap_cell_type_nd, 
+                                        umap_cd68_expr_nd, 
+                                        violin_cd68_expr_celltype_nd,
+                                        ncol = 2)
+```
+
+```{r fig.width=20, fig.height=20}
+umap_grid_w_violin_cd68_nd
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_cd68_expression_violin_scRNAseq_nd.pdf"), 
+       umap_grid_w_violin_cd68_nd, 
+       width = 34, 
+       height = 34,
+       units = "cm")
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_cd68_expression_violin_scRNAseq_nd.png"), 
+       umap_grid_w_violin_cd68_nd, 
+       width = 34, 
+       height = 34,
+       units = "cm")
+```
+
+
+
+# Overlay IBA1 and CD68 expression  
+
+## rGBM
+
+```{r}
+annotated_with_cd68_pos <- annotated_with_cd68 %>%
+       mutate(cd68_positive = if_else(cd68_expression > 0, 
+                                      "CD68 +", 
+                                      NA)) %>% 
+       dplyr::select(-c(gene))
+
+annotated_with_iba1_cd68 <- left_join(annotated_with_iba1,
+                                      annotated_with_cd68_pos)
+
+annotated_with_iba1_cd68_only_cd68 <- annotated_with_iba1_cd68 %>%
+       filter(!is.na(cd68_positive))
+
+annotated_with_iba1_only <- annotated_with_iba1 %>%
+       filter(iba1_expression > 0) 
+```
+
+```{r}
+umap_iba1_cd68_expr3 <- ggplot() +
+  rasterize(
+  geom_point(data = annotated_with_iba1_cd68, 
+       mapping = aes(x = x, 
+                     y = y,
+                     color = iba1_expression),
+       alpha = 0.2,
+       shape = 16
+           ),
+           dpi = 300
+           ) +
+  scale_color_gradient(low = "grey", high = "red") +
+  labs(x = "UMAP_1", 
+       y = "UMAP_2", 
+       color = "IBA1 expression\n[log2(CPM)]") +
+  new_scale_color() + 
+  rasterize(
+  geom_point(data = annotated_with_iba1_cd68_only_cd68, 
+       mapping = aes(x = x, 
+                     y = y,
+                     color = cd68_expression),
+       alpha = 0.09,
+       shape = 16
+           ),
+           dpi = 300
+           ) +
+  scale_color_gradient(low = "grey", high = "green") +
+  labs(x = "UMAP_1", 
+       y = "UMAP_2", 
+       color = "CD68 expression\n[log2(CPM)]",
+       title = "Recurrent GBM")
+```
+
+```{r}
+umap_iba1_cd68_expr3
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_iba1_cd68_expression_scRNAseq.pdf"), 
+       umap_iba1_cd68_expr3, 
+       width = 34/2, 
+       height = 34/2,
+       units = "cm")
+```
+
+
+
+### Violin of overlay
+
+```{r}
+annotated_with_cd684violin2 <- dplyr::rename(annotated_with_cd684violin,
+                                              gene_expression = cd68_expression)
+```
+
+```{r}
+annotated_with_iba14violin2 <- dplyr::rename(annotated_with_iba14violin,
+                                              gene_expression = iba1_expression)
+```
+
+```{r}
+annotated_with_iba1_cd68 <- bind_rows(
+       annotated_with_cd684violin2,
+       annotated_with_iba14violin2
+       ) %>%
+       group_by(cluster, gene) %>%
+       filter(n() > 1) %>%
+       ungroup()
+```
+
+```{r}
+#View(annotated_with_iba1_cd68)
+```
+
+```{r}
+violin_two_expr_celltype <- ggplot(annotated_with_iba1_cd68, 
+       aes(x = cluster, 
+           y = gene_expression,
+           fill = cluster)) +
+  geom_violin() +
+  #scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "Cell type", 
+       y = "Gene expression [log2(CPM)]") +
+  facet_grid(.~gene,
+              scale = "free_x") +
+  theme(legend.position = "none",
+        # tilt the x-axis labels 45 degrees
+        axis.text.x = element_text(angle = -45, 
+                                   hjust = 0,
+                                   vjust = 1.6)
+        ) 
+```
+
+
+```{r}
+ggsave(here::here("figures/violin_plots_iba1_cd68_expression_scRNAseq.pdf"), 
+       plot = violin_two_expr_celltype, 
+       device = "pdf",
+       width = 2*(34/3), 
+       height = 34/2,
+       units = "cm")
+```
+
+## iGBM
+       
+```{r}
+annotated_with_cd68_nd <- readRDS(here::here("rds/long_cpm_scrnaseq_cd68_annot_nd.rds"))
+```
+
+```{r}
+annotated_with_iba1_nd <- readRDS(here::here("rds/long_cpm_scrnaseq_iba1_annot_nd.rds"))
+```
+
+```{r}
+annotated_with_cd68_pos_nd <- annotated_with_cd68_nd %>%
+       mutate(cd68_positive = if_else(cd68_expression > 0, 
+                                      "CD68 +", 
+                                      NA)) %>% 
+       dplyr::select(-c(gene))
+
+annotated_with_iba1_cd68_nd <- left_join(annotated_with_iba1_nd,
+                                         annotated_with_cd68_pos_nd)
+
+annotated_with_iba1_cd68_only_cd68_nd <- annotated_with_iba1_cd68_nd %>%
+       filter(!is.na(cd68_positive))
+
+annotated_with_iba1_only_nd <- annotated_with_iba1_nd %>%
+       filter(iba1_expression > 0) 
+```
+
+```{r}
+umap_iba1_cd68_expr3_nd <- ggplot() +
+  rasterize(
+  geom_point(data = annotated_with_iba1_cd68_nd, 
+       mapping = aes(x = x, 
+                     y = y,
+                     color = iba1_expression),
+       alpha = 0.2,
+       shape = 16
+           ),
+           dpi = 300
+           ) +
+  scale_color_gradient(low = "grey", high = "red") +
+  labs(x = "UMAP_1", 
+       y = "UMAP_2", 
+       color = "IBA1 expression\n[log2(CPM)]") +
+  new_scale_color() + 
+  rasterize(
+  geom_point(data = annotated_with_iba1_cd68_only_cd68_nd, 
+       mapping = aes(x = x, 
+                     y = y,
+                     color = cd68_expression),
+       alpha = 0.09,
+       shape = 16
+           ),
+           dpi = 300
+           ) +
+  scale_color_gradient(low = "grey", high = "green") +
+  labs(x = "UMAP_1", 
+       y = "UMAP_2", 
+       color = "CD68 expression\n[log2(CPM)]",
+       title = "Newly diagnosed GBM")
+```
+
+```{r}
+umap_iba1_cd68_expr3_nd
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_iba1_cd68_expression_scRNAseq_nd.pdf"), 
+       umap_iba1_cd68_expr3_nd, 
+       width = 34/2, 
+       height = 34/2,
+       units = "cm")
+```
+
+```{r}
+umap_iba1_cd68_both <- plot_grid(umap_iba1_cd68_expr3_nd,
+                                 umap_iba1_cd68_expr3)
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_iba1_cd68_expression_scRNAseq_both.pdf"), 
+       umap_iba1_cd68_both, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+## Violin plot of the overlay
+
+```{r}
+annot_w_iba1_CD68_igbm_n_rgbm <- bind_rows(
+       annotated_with_cd68 %>%
+       mutate(gbm_type = "rGBM",
+              expression = cd68_expression),
+       annotated_with_cd68_nd %>%
+       mutate(gbm_type = "iGBM",
+              expression = cd68_expression),
+       annotated_with_iba1 %>%
+       mutate(gbm_type = "rGBM",
+              expression = iba1_expression),
+       annotated_with_iba1_nd %>%
+       mutate(gbm_type = "iGBM",
+              expression = iba1_expression)
+              ) %>%
+                                        mutate(cluster = if_else(
+                                          cluster == "DC 1", 
+                                          "DC", 
+                                          cluster)) %>%
+                                        filter(
+                                          !cluster %in% c(
+                                                 "DC 2",
+                                                 "DC 3",
+                                                 "DC 4",
+                                                 "Mast cells",
+                                                 "Plasma B",
+                                                 "Regulatory T cells"
+                                          )
+                                        ) %>%
+              filter(expression > 5)
+
+unique(annot_w_iba1_CD68_igbm_n_rgbm$cluster)
+```
+
+```{r}
+violin_two_expr_celltype_igbm_n_rgbm <- ggplot(annot_w_iba1_CD68_igbm_n_rgbm, 
+       aes(x = cluster, 
+           y = expression,
+           fill = gbm_type)) +
+  geom_violin() +
+  #scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "Cell type", 
+       y = "Gene expression [log2(CPM)]") +
+  facet_grid(.~gene,
+              scale = "free_x") +
+  theme(legend.position = "bottom",
+        # tilt the x-axis labels 45 degrees
+        axis.text.x = element_text(angle = -45, 
+                                   hjust = 0,
+                                   vjust = 1.6)
+        ) 
+```
+
+```{r}
+violin_two_expr_celltype_igbm_n_rgbm
+```
+
+```{r}
+ggsave(here::here("figures/violin_plots_iba1_cd68_expression_scRNAseq_igbm_n_rgbm.pdf"), 
+       plot = violin_two_expr_celltype_igbm_n_rgbm, 
+       device = "pdf",
+       width = 2*(34/3), 
+       height = 34/3,
+       units = "cm")
+```
+
+```{r}
+ggsave(here::here("figures/violin_plots_iba1_cd68_expression_scRNAseq_igbm_n_rgbm.png"), 
+       plot = violin_two_expr_celltype_igbm_n_rgbm, 
+       device = "png",
+       width = 2*(34/3), 
+       height = 34/3,
+       units = "cm")
+```
+
+```{r}
+dev.off()
+```
+
+# rGBM vs iGBM comparisons
+
+## ASAH1 expression  
+
+Load the data
+
+```{r}
+annotated_with_asah1_nd <- readRDS(here::here("rds/long_cpm_scrnaseq_asah1_annot_nd.rds"))
+```
+
+### UMAP of cell type based on iGBM (ND = newly diagnosed)
+
+```{r}
+cell_type_centroid_nd <- annotated_with_asah1_nd %>%
+  group_by(cluster) %>%
+  summarise(x = mean(x), 
+            y = mean(y)) %>%
+  ungroup()
+```
+
+```{r}
+umap_cell_type_nd <- ggplot(annotated_with_asah1_nd, 
+       aes(x = x, 
+           y = y, 
+           color = cluster)) +
+  ggrastr::rasterize(geom_point(alpha = 0.5)) +
+  geom_text(data = cell_type_centroid_nd, 
+            aes(x = x, 
+                y = y, 
+                label = cluster), 
+            size = 5,
+            color = "black") +
+  #scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "UMAP_1", 
+       y = "UMAP_2", 
+       color = "Cell type",
+       title = "Newly diagnosed GBM") +
+  theme(legend.position = "bottom") 
+```
+
+# UMAPs of cell type between iGBM and rGBM
+
+```{r}
+umap_grid_wnd <- plot_grid(umap_cell_type, 
+                           umap_cell_type_nd, 
+                           ncol = 2)
+```
+
+```{r}
+umap_grid_wnd
+```
+
+```{r}
+ggsave(here::here("figures/umap_grid_cell_type_iGBM_n_rGBM_scRNAseq.pdf"), 
+       umap_grid_wnd, 
+       width = 34, 
+       height = 34/2,
+       units = "cm")
+```
+
+## UMAPs with ASAH1 expression between iGBM and rGBM
+
+```{r}
+umap_asah1_expr_nd <- ggplot(annotated_with_asah1_nd, 
+       aes(x = x, 
+           y = y, 
+           color = asah1_expression)) +
+  ggrastr::rasterize(geom_point(alpha = 0.5)) +
+  geom_text(data = cell_type_centroid_nd, 
+            aes(x = x, 
+                y = y, 
+                label = cluster), 
+            size = 5,
+            color = "black") +
+  scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "UMAP_1", 
+       y = "UMAP_2", 
+       color = "ASAH1 expression\n[log2(CPM)]",
+       title = "Newly diagnosed GBM") +
+  theme(legend.position = "bottom")
+```
+
+```{r}
+umap_grid_asah1_nd <- plot_grid(umap_asah1_expr, 
+                                umap_asah1_expr_nd, 
+                                ncol = 2)
+```
+
+```{r}
+umap_grid_asah1_nd
+```
+
+## Violin plots of ASAH1 expression between iGBM and rGBM
+
+```{r}
+# merge tables from annotated abundances in iGBM and rGBM
+#View(annotated_with_asah1_nd)
+#View(annotated_with_asah1)
+
+str(annotated_with_asah1)
+str(annotated_with_asah1_nd)
+```
+
+```{r}
+annot_w_asah1_igbm_n_rgbm <- bind_rows(annotated_with_asah1 %>%
+                                        mutate(gbm_type = "rGBM"),
+                                       annotated_with_asah1_nd %>%
+                                        mutate(gbm_type = "iGBM")) %>%
+                                        mutate(cluster = if_else(
+                                          cluster == "DC 1", 
+                                          "DC", 
+                                          cluster)) %>%
+                                        filter(
+                                          !cluster %in% c(
+                                                 "DC 2",
+                                                 "DC 3",
+                                                 "DC 4",
+                                                 "Mast cells",
+                                                 "Plasma B",
+                                                 "Regulatory T cells"
+                                          )
+                                        )
+```
+
+```{r}
+annot_w_asah1_igbm_n_rgbm_1 <- annot_w_asah1_igbm_n_rgbm %>%
+  filter(asah1_expression > 2.5)
+```
+```{r}
+violin_asahl_expr_celltype <- ggplot(annot_w_asah1_igbm_n_rgbm_1, 
+       aes(x = cluster, 
+           y = asah1_expression,
+           fill = gbm_type)) +
+  geom_violin() +
+  #scale_color_gradient(low = "yellow", high = "red") +
+  labs(x = "Cell type", 
+       y = "ASAH1 expression [log2(CPM)]") +
+  theme(legend.position = "bottom",
+        # tilt the x-axis labels 45 degrees
+        axis.text.x = element_text(angle = -45, 
+                                   hjust = 0,
+                                   vjust = 1.6)
+        ) 
+```
+
+```{r}
+violin_asahl_expr_celltype
+```
+
+```{r}
+# fit a linear model to compare ASAH1 expression between iGBM and rGBM
+# within each cluster
+
+#View(annot_w_asah1_igbm_n_rgbm)
+
+
+```
+
+## Violin plots for ASAH1, ELANE and MPO expression between iGBM and rGBM
+
+```{r}
+#head(annot_w_asah1_elane_mpo_igbm_n_rgbm)
+
+annot_w_asah1_elane_mpo_igbm_n_rgbm <- bind_rows(
+       annotated_with_asah1 %>%
+       mutate(gbm_type = "rGBM",
+              expression = asah1_expression),
+       annotated_with_asah1_nd %>%
+       mutate(gbm_type = "iGBM",
+              expression = asah1_expression),
+       annotated_with_elane %>%
+       mutate(gbm_type = "rGBM",
+              expression = elane_expression),
+       annotated_with_elane_nd %>%
+       mutate(gbm_type = "iGBM",
+              expression = elane_expression),
+       annotated_with_mpo %>%
+       mutate(gbm_type = "rGBM",
+              expression = mpo_expression),
+       annotated_with_mpo_nd %>%
+       mutate(gbm_type = "iGBM",
+              expression = mpo_expression)
+              ) %>%
+                                        mutate(cluster = if_else(
+                                          cluster == "DC 1", 
+                                          "DC", 
+                                          cluster)) %>%
+                                        filter(
+                                          !cluster %in% c(
+                                                 "DC 2",
+                                                 "DC 3",
+                                                 "DC 4",
+                                                 "Mast cells",
+                                                 "Plasma B",
+                                                 "Regulatory T cells"
+                                          )
+                                        )
+
+unique(annot_w_asah1_elane_mpo_igbm_n_rgbm$cluster)
+```
+
+```{r}
+annot_w_asah1_elane_mpo_igbm_n_rgbm1 <- annot_w_asah1_elane_mpo_igbm_n_rgbm %>%
+  filter(expression > 2.5)
+```
+
+```{r}
+violin_three_expr_celltype <- ggplot(annot_w_asah1_elane_mpo_igbm_n_rgbm1, 
+       aes(x = cluster, 
+           y = expression,
+           fill = gbm_type)) +
+  geom_violin() +
+  #scale_color_gradient(low = "yellow", high = "red") +
+  facet_wrap(.~gene,
+              scale = "free_x",
+              ncol = 3) +
+  labs(x = "Cell type", 
+       y = "Gene expression [log2(CPM)]") +
+  theme(legend.position = "bottom",
+        # tilt the x-axis labels 45 degrees
+        axis.text.x = element_text(angle = -45, 
+                                   hjust = 0,
+                                   vjust = 1.6)
+        ) 
+```
+
+```{r}
+violin_three_expr_celltype
+```
+
+```{r}
+ggsave(here::here("figures/violin_plots_iba1_cd68_expression_scRNAseq_igbm_n_rgbm.pdf"), 
+       plot = violin_three_expr_celltype, 
+       device = "pdf",
+       width = 2*(34/3), 
+       height = 34/3,
+       units = "cm")
+```
+
+## ASAH1 expression in CD14+ cells 
+
+### rGBM
+
+Filter CD14+ cells:
+
+```{r}
+max(annotated_with_cd14$cd14_expression)
+
+cd14_positive_rgbm <- annotated_with_cd14 %>%
+  filter(cluster %in% c(
+       "Monocytes",
+       "prol. TAM",
+       "TAM 1",
+       "TAM 2"
+  )) %>% 
+  pull(cell)
+
+annotated_with_asah1_cd14_posit_rgbm <- annotated_with_asah1 %>%
+       filter(cell %in% c(cd14_positive_rgbm))
+```
+
+### iGBM 
+
+Filter CD14+ cells:
+
+```{r}
+max(annotated_with_cd14_nd$cd14_expression)
+
+cd14_positive_igbm <- annotated_with_cd14_nd %>%
+  filter(cluster %in% c(
+       "Monocytes",
+       "prol. TAM",
+       "TAM 1",
+       "TAM 2"
+  )) %>% 
+  pull(cell)
+
+annotated_with_asah1_cd14_posit_igbm <- annotated_with_asah1_nd %>%
+       filter(cell %in% c(cd14_positive_igbm)) 
+```
+
+### Violin plot of ASAH1 expression in CD14+ cells
+
+```{r}
+annotated_with_asah1_cd14_posit <- bind_rows(
+       annotated_with_asah1_cd14_posit_rgbm %>%
+       mutate(gbm_type = "rGBM"),
+       annotated_with_asah1_cd14_posit_igbm %>%
+       mutate(gbm_type = "iGBM")
+       ) %>%
+       group_by(cluster, gbm_type) %>%
+       filter(n() > 1) %>%
+       ungroup() %>% 
+       filter(asah1_expression > 2.5) %>%
+       mutate(cluster = if_else(
+         cluster == "DC 1", 
+         "DC", 
+         cluster)) %>%
+       filter(
+         !cluster %in% c(
+                "DC 2",
+                "DC 3",
+                "DC 4",
+                "Mast cells",
+                "Plasma B",
+                "Regulatory T cells",
+                "B cells",
+                "DC",
+                "NK cells",
+                "T cells"
+         )
+       )
+
+       annotated_with_asah1_cd14_posit
+```
+
+```{r}
+violin_asahl_expr_celltype_cd14 <- ggplot(annotated_with_asah1_cd14_posit, 
+       aes(x = cluster, 
+           y = asah1_expression,
+           fill = gbm_type)) +
+  geom_violin(width = 0.6) +
+  geom_boxplot(width = 0.4, ) +
+  stat_compare_means(aes(group = gbm_type), 
+                     label = "p.format") +
+  labs(x = "Cell type", 
+       y = "ASAH1 expression [log2(CPM)]") +
+  theme(legend.position = "bottom",
+        # tilt the x-axis labels 45 degrees
+        axis.text.x = element_text(angle = -45, 
+                                   hjust = 0,
+                                   vjust = 1.6))
+```
+
+```{r}
+dev.off()
+```
+
+```{r}
+violin_asahl_expr_celltype_cd14
+```
+
+```{r}
+ggsave(here::here("figures/violin_plots_asahl_expr_celltype_cd14_scRNAseq_igbm_n_rgbm.pdf"), 
+       plot = violin_asahl_expr_celltype_cd14, 
+       device = "pdf",
+       width = (2*(34/3))/2, 
+       height = 34/3,
+       units = "cm")
+```
